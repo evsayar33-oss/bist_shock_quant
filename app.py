@@ -2,11 +2,27 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import os
+import json
 
-st.set_page_config(page_title="BIST Synchronous Shock Terminal", layout="wide", page_icon="⚡")
+st.set_page_config(page_title="BIST Adaptive Synchronous Shock Terminal", layout="wide", page_icon="⚡")
 
-st.title("⚡ BIST Senkronize Şok & Faz Değişim Terminali")
-st.markdown("*Son 1 aylık normalinden sapan; Hacim, Mum Menzili (ATR) ve Likidite Boşluğunun **aynı gün eşzamanlı patladığı (Day-1)** hisseler.*")
+st.title("⚡ BIST Öz-Öğrenen Senkronize Şok Terminali")
+st.markdown("*Sabit eşikleri reddeden; günün piyasa oynaklığına göre **otomatik dinamik eşik belirleyen ve geçmiş kâr/zarardan öğrenen** çok boyutlu quant motoru.*")
+
+AI_STATE_FILE = "shock_ai_state.json"
+
+def load_ai_state():
+    if os.path.exists(AI_STATE_FILE):
+        try:
+            with open(AI_STATE_FILE, 'r') as f:
+                return json.load(f)
+        except:
+            pass
+    return {
+        "thresholds": {"th_vol": 1.5, "th_range": 1.5, "th_flow": 2.0, "th_lambda": 1.2},
+        "weights": {"vol": 0.30, "range": 0.30, "flow": 0.25, "lambda": 0.15},
+        "status": "🕒 PİYASA EŞİKLERİ HESAPLANIYOR"
+    }
 
 def load_data():
     if os.path.exists("gecmis_veri.csv"):
@@ -20,7 +36,21 @@ def load_data():
             return pd.DataFrame()
     return pd.DataFrame()
 
+ai_state = load_ai_state()
 df_gecmis = load_data()
+
+# --- ÜST AI PANELİ ---
+th = ai_state['thresholds']
+w = ai_state['weights']
+st.info(f"🤖 **Model Durumu:** {ai_state['status']}")
+
+c1, c2, c3, c4 = st.columns(4)
+c1.metric("🎯 Dinamik Hacim Eşiği", f"+{th['th_vol']}σ", f"Ağırlık: %{int(w['vol']*100)}")
+c2.metric("🎯 Dinamik Menzil (ATR) Eşiği", f"+{th['th_range']}σ", f"Ağırlık: %{int(w['range']*100)}")
+c3.metric("🎯 Dinamik Alıcı Akış Eşiği", f"+{th['th_flow']}σ", f"Ağırlık: %{int(w['flow']*100)}")
+c4.metric("🎯 Dinamik Likidite Boşluk Eşiği", f"+{th['th_lambda']}σ", f"Ağırlık: %{int(w['lambda']*100)}")
+
+st.divider()
 
 if not df_gecmis.empty:
     son_tarih = df_gecmis['tarih'].max()
@@ -28,7 +58,7 @@ if not df_gecmis.empty:
     
     st.caption(f"🗓️ Son Tarama: **{son_tarih.strftime('%Y-%m-%d')}** | 📊 Taranan Hisse: **{len(df)}**")
 
-    required_cols = ['shock_score', 'score_diff', 'z_vol', 'z_range', 'z_lambda', 'z_flow', 'value_traded', 'change_%', 'shock_count']
+    required_cols = ['shock_score', 'score_diff', 'z_vol', 'z_range', 'z_lambda', 'z_flow', 'value_traded', 'change_%', 'shock_count', 'close']
     for c in required_cols:
         if c not in df.columns:
             df[c] = 0.0
@@ -56,8 +86,8 @@ if not df_gecmis.empty:
             st.sidebar.metric(f"{search_ticker} Şok Skoru", f"{score:.1f}", f"{diff:+.1f}")
             st.sidebar.write(f"**Durum:** {regime}")
             st.sidebar.write(f"**Eşzamanlı Şok Sayısı:** {sc}/4 Gösterge")
-            st.sidebar.write(f"**Hacim Sapması:** {zv:+.2f}σ")
-            st.sidebar.write(f"**Menzil (ATR) Sapması:** {zr:+.2f}σ")
+            st.sidebar.write(f"**Hacim Sapması:** {zv:+.2f}σ (Eşik: +{th['th_vol']}σ)")
+            st.sidebar.write(f"**Menzil (ATR) Sapması:** {zr:+.2f}σ (Eşik: +{th['th_range']}σ)")
             st.sidebar.write(f"**Likidite Boşluğu:** {zl:+.2f}σ")
             
             st.sidebar.write("📈 Son 30 Günlük Şok Trendi:")
@@ -70,7 +100,7 @@ if not df_gecmis.empty:
 
     # 1. ANA TABLO: SENKRONİZE ŞOK LİDERLERİ
     st.subheader("🚀 Eşzamanlı Şok Patlama Liderleri (Top 20)")
-    st.markdown("*Hacim, Mum Boyu ve Alıcı Akışının aynı anda 1 aylık normalini katladığı taze patlamalar.*")
+    st.markdown("*Günün dinamik piyasa eşiklerini aşan, tüm göstergeleri aynı anda patlamış Day-1 liderleri.*")
     
     top_candidates = df[df['shock_score'] > 0.0].sort_values(by='shock_score', ascending=False).head(20)
     
@@ -84,7 +114,7 @@ if not df_gecmis.empty:
         'regime': 'Şok Rejimi',
         'shock_count': 'Senkron Gösterge',
         'z_vol': 'Hacim Şoku (Z)',
-        'z_range': 'Menzil/ATR Şoku (Z)',
+        'z_range': 'Menzil Şoku (Z)',
         'z_lambda': 'Likidite Şoku (Z)',
         'change_%': 'Günlük %',
         'close': 'Fiyat (TL)'
@@ -97,7 +127,7 @@ if not df_gecmis.empty:
                 "Şok Skoru": st.column_config.ProgressColumn("Şok Skoru", min_value=0, max_value=100, format="%.1f"),
                 "Senkron Gösterge": st.column_config.NumberColumn("Senkron Gösterge", format="%d/4"),
                 "Hacim Şoku (Z)": st.column_config.NumberColumn("Hacim Şoku (Z)", format="%+.2fσ"),
-                "Menzil/ATR Şoku (Z)": st.column_config.NumberColumn("Menzil/ATR Şoku (Z)", format="%+.2fσ"),
+                "Menzil Şoku (Z)": st.column_config.NumberColumn("Menzil Şoku (Z)", format="%+.2fσ"),
                 "Likidite Şoku (Z)": st.column_config.NumberColumn("Likidite Şoku (Z)", format="%+.2fσ"),
                 "Günlük %": st.column_config.NumberColumn("Günlük %", format="%+0.2f%%"),
                 "Fiyat (TL)": st.column_config.NumberColumn("Fiyat (TL)", format="%.2f TL"),
@@ -107,7 +137,7 @@ if not df_gecmis.empty:
             hide_index=True
         )
     else:
-        st.info("ℹ️ Bugün kriterleri karşılayan eşzamanlı bir şok patlaması bulunamadı.")
+        st.info("ℹ️ Bugün dinamik piyasa eşiklerini aşan bir şok patlaması tespit edilemedi.")
 
     st.divider()
 
@@ -123,7 +153,7 @@ if not df_gecmis.empty:
                 "Şok Skoru": st.column_config.NumberColumn("Şok Skoru", format="%.1f"),
                 "Senkron Gösterge": st.column_config.NumberColumn("Senkron Gösterge", format="%d/4"),
                 "Hacim Şoku (Z)": st.column_config.NumberColumn("Hacim Şoku (Z)", format="%+.2fσ"),
-                "Menzil/ATR Şoku (Z)": st.column_config.NumberColumn("Menzil/ATR Şoku (Z)", format="%+.2fσ"),
+                "Menzil Şoku (Z)": st.column_config.NumberColumn("Menzil Şoku (Z)", format="%+.2fσ"),
                 "Likidite Şoku (Z)": st.column_config.NumberColumn("Likidite Şoku (Z)", format="%+.2fσ"),
                 "Günlük %": st.column_config.NumberColumn("Günlük %", format="%+0.2f%%"),
                 "Fiyat (TL)": st.column_config.NumberColumn("Fiyat (TL)", format="%.2f TL"),
