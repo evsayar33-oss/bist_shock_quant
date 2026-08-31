@@ -1,0 +1,39 @@
+name: BIST Coordinated Shock Scan
+
+on:
+  schedule:
+    # Türkiye Saati ile 17:00 (UTC 14:00) - Hafta İçi (1-5)
+    - cron: '0 14 * * 1-5'
+  workflow_dispatch: # Manuel çalıştırma butonu
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repo
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.10'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+
+    - name: Run Pipeline
+      env:
+        TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+        CHAT_ID: ${{ secrets.CHAT_ID }}
+      run: |
+        python main.py
+
+    - name: Commit & Push Changes
+      run: |
+        git config --global user.name "QuantBot"
+        git config --global user.email "quantbot@github.com"
+        git add gecmis_veri.csv
+        git diff --quiet && git diff --staged --quiet || (git commit -m "QuantBot Shock Guncelleme: $(date)" && git push)
