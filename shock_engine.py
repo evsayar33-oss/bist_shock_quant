@@ -18,9 +18,14 @@ def gecmis_veriyi_yukle():
             return pd.DataFrame()
     return pd.DataFrame()
 
-def calculate_shock_scores(df, df_gecmis):
+def calculate_shock_scores(df, df_gecmis, dynamic_thresholds=None, dynamic_weights=None):
     if df.empty: 
         return df
+
+    if dynamic_thresholds is None:
+        dynamic_thresholds = {"th_vol": 1.5, "th_range": 1.5, "th_flow": 2.0, "th_lambda": 1.2}
+    if dynamic_weights is None:
+        dynamic_weights = {"vol": 0.30, "range": 0.30, "flow": 0.25, "lambda": 0.15}
 
     scored_data = []
 
@@ -38,26 +43,16 @@ def calculate_shock_scores(df, df_gecmis):
         perf_1m = float(item.get('perf_1m', 0.0))
         perf_3m = float(item.get('perf_3m', 0.0))
 
-        # =========================================================================
-        # 1. ÇOK BOYUTLU ŞOK VEKTÖRLERİ (1 AYLIK ORTALAMADAN SAPMALAR)
-        # =========================================================================
-        
-        # A. HACİM ŞOKU (Z_Vol): 1 Aylık Ortalamadan Sapma
-        z_vol = float((rvol - 1.0) * 2.2)
-        z_vol = round(min(max(z_vol, -2.0), 6.0), 2)
+        # 1. ÇOK BOYUTLU SAPMALAR
+        z_vol = round(min(max(float((rvol - 1.0) * 2.2), -2.0), 6.0), 2)
 
-        # B. MENZİL ŞOKU (Z_Range): Günlük Bar Boyunun 14 Günlük ATR'ye Oranı
         today_range = high - low
         safe_atr = max(atr, 0.01)
-        range_expansion_ratio = today_range / safe_atr
-        z_range = float((range_expansion_ratio - 1.0) * 2.5)
-        z_range = round(min(max(z_range, -2.0), 6.0), 2)
+        z_range = round(min(max(float(((today_range / safe_atr) - 1.0) * 2.5), -2.0), 6.0), 2)
 
-        # C. LİKİDİTE BOŞLUĞU ŞOKU (Kyle's Lambda): Birim Paraya Düşen Fiyat Hareketi
         raw_lambda = (abs(change) / ((value_traded / 10000000.0) + 1e-9)) if value_traded > 0 else 0.0
         z_lambda = round(min(float(np.log1p(raw_lambda) * 2.0), 5.0), 2)
 
-        # D. ALICI BASKISI & EMİR AKIŞ ŞOKU (CLV & Directional Efficiency)
         if today_range > 0:
             clv = ((close - low) - (high - close)) / today_range
             body_eff = (close - open_p) / today_range
@@ -67,26 +62,16 @@ def calculate_shock_scores(df, df_gecmis):
         aggressor_flow = (max(clv, 0.0) * 0.55) + (max(body_eff, 0.0) * 0.45)
         z_flow = round(float(aggressor_flow * 4.0), 2)
 
-        # =========================================================================
-        # 2. SENKRONİZASYON (TÜM GÖSTERGELER AYNI ANDA PATLADI MI?)
-        # =========================================================================
-        # Kaç tane gösterge aynı anda +1.5 standart sapmanın üzerine çıktı?
+        # 2. DİNAMİK EŞİKLERLE SENKRONİZASYON KONTROLÜ (SABİT SAYILAR YOK!)
         shock_count = 0
-        if z_vol >= 1.5: shock_count += 1
-        if z_range >= 1.5: shock_count += 1
-        if z_lambda >= 1.2: shock_count += 1
-        if z_flow >= 2.0: shock_count += 1
+        if z_vol >= dynamic_thresholds['th_vol']: shock_count += 1
+        if z_range >= dynamic_thresholds['th_range']: shock_count += 1
+        if z_lambda >= dynamic_thresholds['th_lambda']: shock_count += 1
+        if z_flow >= dynamic_thresholds['th_flow']: shock_count += 1
 
-        # Senkronizasyon Çarpanı (Birlikte patlayanlara devasa ödül)
-        concordance_multiplier = 1.0 + (shock_count * 0.25) # 4'ü de patlarsa 2.0x çarpan
-
-        # =========================================================================
-        # 3. ŞOK ÖNCESİ DİNLENME KONTROLÜ (DAY-1 IGNITION FILTER)
-        # =========================================================================
-        # Hisse son 1 ayda zaten %35 gitmişse, bu günkü şok bir tükeniştir (Climax).
-        # Ama son 1 ayda sakin kalmışsa (%0 - %20), bu gerçek bir 1. GÜN ŞOKUDUR!
+        concordance_multiplier = 1.0 + (shock_count * 0.25)
         is_fresh_shock = (perf_1m <= 22.0) and (perf_3m >= -10.0)
-        is_downtrend_knife = (perf_3m < -25.0) # Düşen bıçak kalkanı
+        is_downtrend_knife = (perf_3m < -25.0)
 
         item['z_vol'] = z_vol
         item['z_range'] = z_range
@@ -102,23 +87,27 @@ def calculate_shock_scores(df, df_gecmis):
     if res_df.empty: 
         return res_df
 
-    # Yüzdelik Dilim Normalizasyonu
+    # 3. YÜZDELİK DİLİM NORMALİZASYONU
     res_df['pct_vol'] = res_df['z_vol'].rank(pct=True) * 100.0
     res_df['pct_range'] = res_df['z_range'].rank(pct=True) * 100.0
     res_df['pct_lambda'] = res_df['z_lambda'].rank(pct=True) * 100.0
     res_df['pct_flow'] = res_df['z_flow'].rank(pct=True) * 100.0
 
-    # BİLEŞİK SENKRONİZE ŞOK SKORU (0 - 100)
+    # 4. ÖĞRENİLEN DİNAMİK AĞIRLIKLARLA SKORLAMA
+    w_v = dynamic_weights.get('vol', 0.30)
+    w_r = dynamic_weights.get('range', 0.30)
+    w_f = dynamic_weights.get('flow', 0.25)
+    w_l = dynamic_weights.get('lambda', 0.15)
+
     raw_score = (
-        res_df['pct_vol'] * 0.30 +
-        res_df['pct_range'] * 0.30 +
-        res_df['pct_flow'] * 0.25 +
-        res_df['pct_lambda'] * 0.15
+        res_df['pct_vol'] * w_v +
+        res_df['pct_range'] * w_r +
+        res_df['pct_flow'] * w_f +
+        res_df['pct_lambda'] * w_l
     ) * (res_df['concordance_mult'] / 1.5)
 
     raw_score = np.clip(np.round(raw_score, 1), 0.0, 99.5)
 
-    # Düşen Bıçakları ve Negatif Fiyatları Sıfırla
     res_df['shock_score'] = np.where(
         (res_df['change_%'] > 0) & (~res_df['is_downtrend_knife']),
         raw_score,
