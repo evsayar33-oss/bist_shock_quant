@@ -42,8 +42,17 @@ def calculate_shock_scores(df, df_gecmis, dynamic_thresholds=None, dynamic_weigh
         atr = float(item.get('atr', 1.0))
         perf_1m = float(item.get('perf_1m', 0.0))
         perf_3m = float(item.get('perf_3m', 0.0))
+        vwap = float(item.get('vwap', 0.0))
 
-        # 1. ÇOK BOYUTLU SAPMALAR
+        # =========================================================================
+        # 1. VWAP & SABAH TUZAĞI KALKANI
+        # =========================================================================
+        # Fiyat VWAP'ın altındaysa kurumlar mal dağıtıyordur -> DİSKALİFİYE!
+        is_below_vwap = False
+        if vwap > 0 and close < (vwap * 0.998):
+            is_below_vwap = True
+
+        # 2. ÇOK BOYUTLU SAPMALAR
         z_vol = round(min(max(float((rvol - 1.0) * 2.2), -2.0), 6.0), 2)
 
         today_range = high - low
@@ -62,7 +71,7 @@ def calculate_shock_scores(df, df_gecmis, dynamic_thresholds=None, dynamic_weigh
         aggressor_flow = (max(clv, 0.0) * 0.55) + (max(body_eff, 0.0) * 0.45)
         z_flow = round(float(aggressor_flow * 4.0), 2)
 
-        # 2. DİNAMİK EŞİKLERLE SENKRONİZASYON KONTROLÜ (SABİT SAYILAR YOK!)
+        # 3. SENKRONİZASYON KONTROLÜ
         shock_count = 0
         if z_vol >= dynamic_thresholds['th_vol']: shock_count += 1
         if z_range >= dynamic_thresholds['th_range']: shock_count += 1
@@ -81,19 +90,19 @@ def calculate_shock_scores(df, df_gecmis, dynamic_thresholds=None, dynamic_weigh
         item['concordance_mult'] = concordance_multiplier
         item['is_fresh_shock'] = is_fresh_shock
         item['is_downtrend_knife'] = is_downtrend_knife
+        item['is_below_vwap'] = is_below_vwap
         scored_data.append(item)
 
     res_df = pd.DataFrame(scored_data)
     if res_df.empty: 
         return res_df
 
-    # 3. YÜZDELİK DİLİM NORMALİZASYONU
+    # Yüzdelik Dilim Sıralaması
     res_df['pct_vol'] = res_df['z_vol'].rank(pct=True) * 100.0
     res_df['pct_range'] = res_df['z_range'].rank(pct=True) * 100.0
     res_df['pct_lambda'] = res_df['z_lambda'].rank(pct=True) * 100.0
     res_df['pct_flow'] = res_df['z_flow'].rank(pct=True) * 100.0
 
-    # 4. ÖĞRENİLEN DİNAMİK AĞIRLIKLARLA SKORLAMA
     w_v = dynamic_weights.get('vol', 0.30)
     w_r = dynamic_weights.get('range', 0.30)
     w_f = dynamic_weights.get('flow', 0.25)
@@ -108,20 +117,23 @@ def calculate_shock_scores(df, df_gecmis, dynamic_thresholds=None, dynamic_weigh
 
     raw_score = np.clip(np.round(raw_score, 1), 0.0, 99.5)
 
+    # VWAP Altındakileri, Düşen Bıçakları ve Negatifleri SIFIRLA!
     res_df['shock_score'] = np.where(
-        (res_df['change_%'] > 0) & (~res_df['is_downtrend_knife']),
+        (res_df['change_%'] > 0) & (~res_df['is_downtrend_knife']) & (~res_df['is_below_vwap']),
         raw_score,
         0.0
     )
 
     # Rejim Tespiti
     conditions = [
+        res_df['is_below_vwap'],
         res_df['is_downtrend_knife'],
         (res_df['shock_score'] >= 75.0) & (res_df['shock_count'] >= 3) & (res_df['is_fresh_shock']),
         (res_df['shock_score'] >= 55.0) & (res_df['shock_count'] >= 2),
         (res_df['change_%'] < -2.0) & (res_df['z_vol'] >= 1.5)
     ]
     choices = [
+        "🚨 VWAP ALTI (SABAH TUZAĞI)",
         "🪤 DÜŞEN BIÇAK TUZAĞI",
         "⚡ SENKRONİZE ŞOK PATLAMASI (DAY-1)",
         "🚀 KISMİ HACİM & MENZİL İVMESİ",
@@ -129,7 +141,7 @@ def calculate_shock_scores(df, df_gecmis, dynamic_thresholds=None, dynamic_weigh
     ]
     res_df['regime'] = np.select(conditions, choices, default="NÖTR REJİM")
 
-    drop_cols = ['pct_vol', 'pct_range', 'pct_lambda', 'pct_flow', 'concordance_mult', 'is_downtrend_knife']
+    drop_cols = ['pct_vol', 'pct_range', 'pct_lambda', 'pct_flow', 'concordance_mult', 'is_downtrend_knife', 'is_below_vwap']
     res_df = res_df.drop(columns=[col for col in drop_cols if col in res_df.columns])
 
     # Düne Göre Skor Farkı
