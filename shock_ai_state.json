@@ -1,1 +1,1 @@
-{"thresholds": {"th_vol": 0.8, "th_range": 6.0, "th_flow": 1.73, "th_lambda": 1.1}, "weights": {"vol": 0.3, "range": 0.3, "flow": 0.25, "lambda": 0.15}, "status": "\ud83d\udd52 \u00d6\u011eRENME EVRES\u0130NDE (\u00d6rneklem Bekleniyor)"}
+{"thresholds": {"th_vol": 0.8, "th_range": 6.0, "th_flow": 1.37, "th_lambda": 1.06}, "weights": {"vol": 0.3, "range": 0.3, "flow": 0.25, "lambda": 0.15}, "status": "\ud83d\udd52 \u00d6\u011eRENME EVRES\u0130NDE (\u00d6rneklem Bekleniyor)"}
