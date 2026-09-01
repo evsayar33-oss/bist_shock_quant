@@ -36,31 +36,23 @@ def send_telegram_message(message):
         print(f"Telegram hatası: {e}")
 
 def format_shock_report(df_scored, thresholds, weights, ai_status):
-    shocks = df_scored[df_scored['shock_score'] >= 50.0].head(8)
+    # Sadece 75.0 ve üzeri puan alan gerçek şok patlama hisselerini filtrele
+    shocks = df_scored[df_scored['shock_score'] >= 75.0].sort_values(by='shock_score', ascending=False)
     
-    # BAŞLIK BLOĞU
-    msg = "⚡ <b>BIST SENKRONİZE ŞOK RAPORU (DAY-1)</b>\n"
+    msg = "⚡ <b>BIST ŞOK PATLAMA LİSTESİ (75+ PUAN)</b>\n"
     msg += f"🗓 <i>{datetime.now().strftime('%Y-%m-%d')} | Saat: 10:30 Seans Açılışı</i>\n"
     msg += "━━━━━━━━━━━━━━━━━━━━\n\n"
     
     if shocks.empty:
-        msg += "ℹ️ <i>Bugün açılışta çok boyutlu senkronize bir şok patlaması tespit edilemedi.</i>"
+        msg += "ℹ️ <i>Bugün 75 puan ve üzeri kriteri karşılayan bir şok hissesi bulunamadı.</i>"
         return msg
 
-    # HİSSE KARTLARI (BLOK FORMATINDA VE BOŞLUKLU)
+    # ULTRA SADE VE BOŞLUKLU FORMAT (Sadece Kod, Puan ve Fiyat)
     for idx, row in shocks.iterrows():
-        s_diff = row.get('score_diff', 0)
-        fark_str = f"+{s_diff:.1f}" if s_diff > 0 else f"{s_diff:.1f}"
-        
-        msg += f"🚀 <b>#{row['ticker']}</b> ── <b>[Skor: {row['shock_score']:.1f}]</b> <i>({fark_str})</i>\n"
-        msg += f"💵 Fiyat: <b>{row['close']:.2f} TL</b>  (<b>%{row['change_%']:+.2f}</b>)\n"
-        msg += f"📊 Hacim Şoku: <b>+{row['z_vol']:.1f}σ</b> | Menzil: <b>+{row['z_range']:.1f}σ</b>\n"
-        msg += f"🎯 Eşzamanlılık: <b>{int(row['shock_count'])}/4 Gösterge Patladı</b>\n"
-        msg += f"🏷 Durum: <code>{row['regime']}</code>\n\n" # Hisseler arası belirgin çift boşluk
+        msg += f"🚀 <b>#{row['ticker']}</b> ── <b>{row['shock_score']:.1f} Puan</b>  <i>({row['close']:.2f} TL | %{row['change_%']:+.2f})</i>\n\n"
         
     msg += "━━━━━━━━━━━━━━━━━━━━\n"
-    msg += f"🤖 <i>AI Dinamik Eşik: Hacim +{thresholds['th_vol']}σ | Menzil +{thresholds['th_range']}σ</i>\n"
-    msg += "⚡ <i>Strateji: Erken Aşama (Day-1) Şok Girişi</i>"
+    msg += f"🎯 <i>Toplam {len(shocks)} adet 75+ puanlı şok hissesi tespit edildi.</i>"
     
     return msg
 
