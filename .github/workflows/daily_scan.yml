@@ -2,9 +2,9 @@ name: BIST Coordinated Shock Scan
 
 on:
   schedule:
-    # Türkiye Saati ile 17:00 (UTC 14:00) - Hafta İçi (1-5)
-    - cron: '0 14 * * 1-5'
-  workflow_dispatch: # Manuel çalıştırma butonu
+    # Türkiye Saati ile 10:30 (UTC 07:30) - Hafta İçi (Pazartesi - Cuma: 1-5)
+    - cron: '30 7 * * 1-5'
+  workflow_dispatch: # Manuel test butonu
 
 jobs:
   build:
@@ -36,4 +36,4 @@ jobs:
         git config --global user.name "QuantBot"
         git config --global user.email "quantbot@github.com"
         git add gecmis_veri.csv shock_signals_log.csv shock_ai_state.json
-        git diff --quiet && git diff --staged --quiet || (git commit -m "QuantBot Shock AI Guncelleme: $(date)" && git push)
+        git diff --quiet && git diff --staged --quiet || (git commit -m "QuantBot 10:30 Shock Guncelleme: $(date)" && git push)
