@@ -36,7 +36,6 @@ def send_telegram_message(message):
         print(f"Telegram hatası: {e}")
 
 def format_shock_report(df_scored, thresholds, weights, ai_status):
-    # Sadece 75.0 ve üzeri puan alan gerçek şok patlama hisselerini filtrele
     shocks = df_scored[df_scored['shock_score'] >= 75.0].sort_values(by='shock_score', ascending=False)
     
     msg = "⚡ <b>BIST ŞOK PATLAMA LİSTESİ (75+ PUAN)</b>\n"
@@ -44,15 +43,15 @@ def format_shock_report(df_scored, thresholds, weights, ai_status):
     msg += "━━━━━━━━━━━━━━━━━━━━\n\n"
     
     if shocks.empty:
-        msg += "ℹ️ <i>Bugün 75 puan ve üzeri kriteri karşılayan bir şok hissesi bulunamadı.</i>"
+        msg += "ℹ️ <i>Bugün 75 puan ve üzeri kriteri karşılayan (VWAP üstü) bir şok hissesi bulunamadı.</i>"
         return msg
 
-    # ULTRA SADE VE BOŞLUKLU FORMAT (Sadece Kod, Puan ve Fiyat)
     for idx, row in shocks.iterrows():
         msg += f"🚀 <b>#{row['ticker']}</b> ── <b>{row['shock_score']:.1f} Puan</b>  <i>({row['close']:.2f} TL | %{row['change_%']:+.2f})</i>\n\n"
         
     msg += "━━━━━━━━━━━━━━━━━━━━\n"
-    msg += f"🎯 <i>Toplam {len(shocks)} adet 75+ puanlı şok hissesi tespit edildi.</i>"
+    msg += f"🎯 <i>Toplam {len(shocks)} adet 75+ puanlı şok hissesi tespit edildi.</i>\n\n"
+    msg += "🛑 <b>RİSK KURALI:</b> <i>Stop-Loss seviyesini 10:00 - 10:15 açılış barının en dip fiyatına (ORB Low) koyunuz!</i>"
     
     return msg
 
@@ -64,7 +63,6 @@ def main():
         print("Hata: Piyasa verisi alınamadı.")
         return
 
-    # 1. AI Geri Besleme ve Dinamik Eşik
     update_realized_shock_returns(df_current)
     df_temp = calculate_shock_scores(df_current, pd.DataFrame())
     dynamic_thresholds = compute_dynamic_market_thresholds(df_temp)
@@ -73,7 +71,6 @@ def main():
     with open(AI_STATE_FILE, 'w') as f:
         json.dump({"thresholds": dynamic_thresholds, "weights": dynamic_weights, "status": ai_status}, f)
 
-    # 2. Puanlama
     df_gecmis = gecmis_veriyi_yukle()
     df_scored = calculate_shock_scores(df_current, df_gecmis, dynamic_thresholds, dynamic_weights)
     
@@ -81,7 +78,6 @@ def main():
         print("Puanlanmış veri boş döndü.")
         return
 
-    # 3. Loglama ve Kayıt
     log_shock_signals(df_scored)
 
     if not df_gecmis.empty:
@@ -97,7 +93,6 @@ def main():
     
     df_yeni_gecmis.to_csv(GECMIS_DOSYA, index=False)
 
-    # 4. Telegram Raporu Gönder
     telegram_msg = format_shock_report(df_scored, dynamic_thresholds, dynamic_weights, ai_status)
     send_telegram_message(telegram_msg)
     print(f"[{datetime.now().strftime('%H:%M:%S')}] 10:30 Raporu Telegram'a başarıyla iletildi.")
