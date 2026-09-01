@@ -4,20 +4,21 @@ import numpy as np
 from datetime import datetime
 
 def get_bist_raw_data():
-    """TradingView üzerinden ham mikroyapı, hacim ve menzil verilerini çeker."""
+    """TradingView üzerinden mikroyapı, hacim, menzil ve VWAP verilerini çeker."""
     url = "https://scanner.tradingview.com/turkey/scan"
     payload = {
         "filter": [
             {"left": "type", "operation": "equal", "right": "stock"},
-            {"left": "Value.Traded", "operation": "greater", "right": 8000000} # Min 8M TL Likidite
+            {"left": "Value.Traded", "operation": "greater", "right": 8000000}
         ],
         "columns": [
             "name", "close", "open", "high", "low", "volume", "change", "Value.Traded",
             "relative_volume_10d_calc",
-            "average_true_range_14",   # 14 Günlük Ortalama Mum Boyu
-            "Perf.1M",                 # 1 Aylık Değişim
-            "Perf.3M",                 # 3 Aylık Değişim
-            "Volatility.D"             # Günlük Volatilite
+            "average_true_range_14",
+            "Perf.1M",
+            "Perf.3M",
+            "Volatility.D",
+            "VWAP" # KURUMSAL VWAP VERİSİ EKLENDİ
         ],
         "sort": {"sortBy": "Value.Traded", "sortOrder": "desc"},
         "range": [0, 300]
@@ -47,7 +48,8 @@ def get_bist_raw_data():
                 "atr": float(d[9]) if len(d) > 9 and d[9] is not None else 1.0,
                 "perf_1m": float(d[10]) if len(d) > 10 and d[10] is not None else 0.0,
                 "perf_3m": float(d[11]) if len(d) > 11 and d[11] is not None else 0.0,
-                "volatility": float(d[12]) if len(d) > 12 and d[12] is not None else 2.0
+                "volatility": float(d[12]) if len(d) > 12 and d[12] is not None else 2.0,
+                "vwap": float(d[13]) if len(d) > 13 and d[13] is not None else 0.0
             })
         return pd.DataFrame(rows)
     except Exception as e:
@@ -55,13 +57,9 @@ def get_bist_raw_data():
         return pd.DataFrame()
 
 def fetch_all_data():
-    print(f"[{datetime.now().strftime('%H:%M:%S')}] Çok boyutlu şok tarayıcısı verileri topluyor...")
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] Çok boyutlu şok ve VWAP verileri toplanıyor...")
     df = get_bist_raw_data()
     if df.empty:
         return df
     df['tarih'] = pd.Timestamp.now().normalize()
     return df
-
-if __name__ == "__main__":
-    test_df = fetch_all_data()
-    print(test_df[['ticker', 'close', 'rvol', 'atr']].head())
