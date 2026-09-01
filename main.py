@@ -36,39 +36,44 @@ def send_telegram_message(message):
         print(f"Telegram hatası: {e}")
 
 def format_shock_report(df_scored, thresholds, weights, ai_status):
-    shocks = df_scored[df_scored['shock_score'] >= 50.0].head(10)
+    shocks = df_scored[df_scored['shock_score'] >= 50.0].head(8)
     
-    msg = f"⚡ <b>BIST ÖZ-ÖĞRENEN SENKRONİZE ŞOK RAPORU</b>\n"
-    msg += f"🗓 <i>Tarih: {datetime.now().strftime('%Y-%m-%d %H:%M')}</i>\n"
-    msg += f"🤖 <i>AI Durumu: {ai_status}</i>\n"
-    msg += f"🎯 <i>Dinamik Eşikler: Hacim +{thresholds['th_vol']}σ | Menzil +{thresholds['th_range']}σ</i>\n\n"
+    # BAŞLIK BLOĞU
+    msg = "⚡ <b>BIST SENKRONİZE ŞOK RAPORU (DAY-1)</b>\n"
+    msg += f"🗓 <i>{datetime.now().strftime('%Y-%m-%d')} | Saat: 10:30 Seans Açılışı</i>\n"
+    msg += "━━━━━━━━━━━━━━━━━━━━\n\n"
     
     if shocks.empty:
-        msg += "⚠️ <i>Bugün dinamik eşikleri aşan senkronize bir şok patlaması tespit edilemedi.</i>"
+        msg += "ℹ️ <i>Bugün açılışta çok boyutlu senkronize bir şok patlaması tespit edilemedi.</i>"
         return msg
 
-    msg += "🚀 <b>DAY-1 SENKRONİZE ŞOK LİDERLERİ (Top 10)</b>\n"
+    # HİSSE KARTLARI (BLOK FORMATINDA VE BOŞLUKLU)
     for idx, row in shocks.iterrows():
-        fark = f"(+{row['score_diff']:.1f})" if row.get('score_diff', 0) > 0 else f"({row.get('score_diff', 0):.1f})"
-        msg += f"• <b>{row['ticker']}</b> : Skor: <b>{row['shock_score']:.1f}</b> {fark} | Fiyat: {row['close']} TL (+%{row['change_%']:.1f})\n"
-        msg += f"  └ <i>Senkron: {int(row['shock_count'])}/4 Gösterge | Hacim: +{row['z_vol']:.1f}σ | {row['regime']}</i>\n"
+        s_diff = row.get('score_diff', 0)
+        fark_str = f"+{s_diff:.1f}" if s_diff > 0 else f"{s_diff:.1f}"
         
+        msg += f"🚀 <b>#{row['ticker']}</b> ── <b>[Skor: {row['shock_score']:.1f}]</b> <i>({fark_str})</i>\n"
+        msg += f"💵 Fiyat: <b>{row['close']:.2f} TL</b>  (<b>%{row['change_%']:+.2f}</b>)\n"
+        msg += f"📊 Hacim Şoku: <b>+{row['z_vol']:.1f}σ</b> | Menzil: <b>+{row['z_range']:.1f}σ</b>\n"
+        msg += f"🎯 Eşzamanlılık: <b>{int(row['shock_count'])}/4 Gösterge Patladı</b>\n"
+        msg += f"🏷 Durum: <code>{row['regime']}</code>\n\n" # Hisseler arası belirgin çift boşluk
+        
+    msg += "━━━━━━━━━━━━━━━━━━━━\n"
+    msg += f"🤖 <i>AI Dinamik Eşik: Hacim +{thresholds['th_vol']}σ | Menzil +{thresholds['th_range']}σ</i>\n"
+    msg += "⚡ <i>Strateji: Erken Aşama (Day-1) Şok Girişi</i>"
+    
     return msg
 
 def main():
-    print(f"[{datetime.now().strftime('%H:%M:%S')}] === Adaptive Coordinated Shock Scanner Başlıyor ===")
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] === 10:30 Coordinated Shock Scanner Başlıyor ===")
     
     df_current = fetch_all_data()
     if df_current.empty:
         print("Hata: Piyasa verisi alınamadı.")
         return
 
-    # 1. YAPAY ZEKA GERİ BESLEME VE DİNAMİK EŞİK ADIMI
-    print(f"[{datetime.now().strftime('%H:%M:%S')}] Geçmiş şokların getiri sonuçları kontrol ediliyor...")
+    # 1. AI Geri Besleme ve Dinamik Eşik
     update_realized_shock_returns(df_current)
-
-    print(f"[{datetime.now().strftime('%H:%M:%S')}] Günün piyasa kesiti analiz edilip dinamik eşikler hesaplanıyor...")
-    # Ham geçici puanlama ile Z-skorları hesapla
     df_temp = calculate_shock_scores(df_current, pd.DataFrame())
     dynamic_thresholds = compute_dynamic_market_thresholds(df_temp)
     dynamic_weights, ai_status = calibrate_adaptive_weights()
@@ -76,7 +81,7 @@ def main():
     with open(AI_STATE_FILE, 'w') as f:
         json.dump({"thresholds": dynamic_thresholds, "weights": dynamic_weights, "status": ai_status}, f)
 
-    # 2. Dinamik Eşik ve Ağırlıklarla Nihai Hesaplama
+    # 2. Puanlama
     df_gecmis = gecmis_veriyi_yukle()
     df_scored = calculate_shock_scores(df_current, df_gecmis, dynamic_thresholds, dynamic_weights)
     
@@ -84,10 +89,9 @@ def main():
         print("Puanlanmış veri boş döndü.")
         return
 
-    # 3. Günün Şoklarını Gelecekte Ölçmek İçin Kaydet
+    # 3. Loglama ve Kayıt
     log_shock_signals(df_scored)
 
-    # 4. Veritabanını Güncelle
     if not df_gecmis.empty:
         bugun = pd.Timestamp.now().normalize()
         df_gecmis = df_gecmis[df_gecmis['tarih'] != bugun]
@@ -100,11 +104,11 @@ def main():
     df_yeni_gecmis = df_yeni_gecmis[df_yeni_gecmis['tarih'] >= limit_tarih]
     
     df_yeni_gecmis.to_csv(GECMIS_DOSYA, index=False)
-    print(f"[{datetime.now().strftime('%H:%M:%S')}] Başarılı! Dinamik şok veritabanı kaydedildi.")
 
-    # 5. Telegram Raporu
+    # 4. Telegram Raporu Gönder
     telegram_msg = format_shock_report(df_scored, dynamic_thresholds, dynamic_weights, ai_status)
     send_telegram_message(telegram_msg)
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] 10:30 Raporu Telegram'a başarıyla iletildi.")
 
 if __name__ == "__main__":
     main()
