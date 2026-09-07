@@ -45,9 +45,6 @@ def calculate_shock_scores(df, df_gecmis, dynamic_thresholds=None, dynamic_weigh
         vwap = float(item.get('vwap', 0.0))
         ema20 = float(item.get('ema20', 0.0))
         sma50 = float(item.get('sma50', 0.0))
-        bb_upper = float(item.get('bb_upper', 0.0))
-        bb_lower = float(item.get('bb_lower', 0.0))
-        bb_basis = float(item.get('bb_basis', close))
 
         # 1. VWAP KONTROLÜ
         is_below_vwap = False
@@ -73,12 +70,8 @@ def calculate_shock_scores(df, df_gecmis, dynamic_thresholds=None, dynamic_weigh
         aggressor_flow = (max(clv, 0.0) * 0.55) + (max(body_eff, 0.0) * 0.45)
         z_flow = round(float(aggressor_flow * 4.0), 2)
 
-        # 3. YENİ BOYUTLAR: TREND TABANI & BOLLINGER SIKIŞMASI
+        # 3. TREND TABANI (EMA20 & SMA50 Üzerinde mi?)
         is_above_trend = (close >= ema20) and (close >= sma50 if sma50 > 0 else True)
-        
-        safe_basis = max(bb_basis, 0.01)
-        bb_width = ((bb_upper - bb_lower) / safe_basis) * 100.0 if (bb_upper > bb_lower) else 20.0
-        is_squeezed = (bb_width <= 14.0) and (bb_width > 0.0) # Enerjisi sıkışmış, yeni patlayan tahta
 
         # 4. GİRİŞ MARJI (SWEET SPOT) DEĞERLENDİRMESİ
         entry_bonus = 0.0
@@ -110,7 +103,6 @@ def calculate_shock_scores(df, df_gecmis, dynamic_thresholds=None, dynamic_weigh
         item['shock_count'] = shock_count
         item['concordance_mult'] = concordance_multiplier
         item['is_above_trend'] = is_above_trend
-        item['is_squeezed'] = is_squeezed
         item['entry_bonus'] = entry_bonus
         item['entry_status'] = entry_status
         item['is_fresh_shock'] = is_fresh_shock
@@ -140,11 +132,9 @@ def calculate_shock_scores(df, df_gecmis, dynamic_thresholds=None, dynamic_weigh
         res_df['pct_lambda'] * w_l
     ) * (res_df['concordance_mult'] / 1.5)
 
-    # NİHAİ GÜVEN SKORU: Baz Puan + Trend Bonusu + Sıkışma Bonusu + Giriş Marjı Bonusu
+    # NİHAİ GÜVEN SKORU: Baz Puan + Trend Desteği + Giriş Marjı Bonusu
     trend_boost = np.where(res_df['is_above_trend'], 6.0, -5.0)
-    squeeze_boost = np.where(res_df['is_squeezed'], 7.0, 0.0)
-    
-    raw_confidence = base_score + trend_boost + squeeze_boost + res_df['entry_bonus']
+    raw_confidence = base_score + trend_boost + res_df['entry_bonus']
     final_score = np.clip(np.round(raw_confidence, 1), 0.0, 99.5)
 
     res_df['shock_score'] = np.where(
@@ -154,7 +144,7 @@ def calculate_shock_scores(df, df_gecmis, dynamic_thresholds=None, dynamic_weigh
     )
     res_df['confidence_score'] = res_df['shock_score']
 
-    # KASA DAĞILIMI (POSITION SIZING) & YILDIZ BELİRLEME
+    # KASA DAĞILIMI (POSITION SIZING) & GÜVEN YILDIZLARI
     def assign_allocation(row):
         score = row['shock_score']
         chg = row['change_%']
@@ -176,7 +166,7 @@ def calculate_shock_scores(df, df_gecmis, dynamic_thresholds=None, dynamic_weigh
         res_df['is_below_vwap'],
         res_df['is_downtrend_knife'],
         res_df['is_bottom_reversal'],
-        (res_df['shock_score'] >= 75.0) & (res_df['is_squeezed']),
+        (res_df['shock_score'] >= 75.0) & (res_df['shock_count'] >= 3) & (res_df['is_above_trend']),
         (res_df['shock_score'] >= 75.0) & (res_df['shock_count'] >= 3),
         (res_df['shock_score'] >= 55.0)
     ]
@@ -184,7 +174,7 @@ def calculate_shock_scores(df, df_gecmis, dynamic_thresholds=None, dynamic_weigh
         "🚨 VWAP ALTI (SABAH TUZAĞI)",
         "🪤 DÜŞEN BIÇAK TUZAĞI",
         "⚡ DİPTEN ŞOK DÖNÜŞÜ (REVERSAL)",
-        "💎 SIKIŞMADAN HAFTALIK SWING KOPUŞU",
+        "💎 TREND ÜSTÜ GÜÇLÜ PATLAMA",
         "⚡ SENKRONİZE ŞOK PATLAMASI (DAY-1)",
         "🚀 KISMİ HACİM & MENZİL İVMESİ"
     ]
