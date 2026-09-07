@@ -2,8 +2,8 @@
     "thresholds": {
         "th_vol": 0.8,
         "th_range": 6.0,
-        "th_flow": 2.5,
-        "th_lambda": 1.32,
+        "th_flow": 3.1,
+        "th_lambda": 1.15,
         "min_score": 76.0
     },
     "weights": {
@@ -12,5 +12,5 @@
         "flow": 0.2,
         "lambda": 0.12
     },
-    "status": "\u26a1 OTOMAT\u0130K KAL\u0130BRE ED\u0130LD\u0130 (Ba\u015far\u0131: %83 | Hedef Skor: 76.0)"
+    "status": "\ud83e\udde0 AI \u00d6Z-\u00d6\u011eRENME AKT\u0130F (E\u011fitilen Sinyal: 38)"
 }
