@@ -36,24 +36,30 @@ def send_telegram_message(message):
         print(f"Telegram hatası: {e}")
 
 def format_shock_report(df_scored, thresholds, weights, ai_status):
-    # Akşam denetiminden gelen dinamik hedef skoru al (Yoksa varsayılan 75.0)
     min_score = thresholds.get('min_score', 75.0)
     shocks = df_scored[df_scored['shock_score'] >= min_score].sort_values(by='shock_score', ascending=False)
     
-    msg = f"⚡ <b>BIST ŞOK PATLAMA LİSTESİ ({min_score:.1f}+ PUAN)</b>\n"
+    msg = f"⚡ <b>BIST GÜVEN SKORLU ŞOK & SWING LİSTESİ ({min_score:.1f}+)</b>\n"
     msg += f"🗓 <i>{datetime.now().strftime('%Y-%m-%d')} | Saat: 10:30 Seans Açılışı</i>\n"
     msg += "━━━━━━━━━━━━━━━━━━━━\n\n"
     
     if shocks.empty:
-        msg += f"ℹ️ <i>Bugün {min_score:.1f} puan ve üzeri kriteri karşılayan (VWAP üstü) bir şok hissesi bulunamadı.</i>"
+        msg += f"ℹ️ <i>Bugün {min_score:.1f} puan ve üzeri güven kriterini karşılayan hisse bulunamadı.</i>"
         return msg
 
     for idx, row in shocks.iterrows():
-        msg += f"🚀 <b>#{row['ticker']}</b> ── <b>{row['shock_score']:.1f} Puan</b>  <i>({row['close']:.2f} TL | %{row['change_%']:+.2f})</i>\n\n"
+        trend_icon = "EMA20 Üstü ✅" if row.get('is_above_trend') else "EMA20 Altı ⚠️"
+        squeeze_icon = "Sıkışma Kırılımı 💎" if row.get('is_squeezed') else "Standart Mum"
+        
+        msg += f"🚀 <b>#{row['ticker']}</b> ── <b>{row['shock_score']:.1f} Puan</b> ({row['stars']})\n"
+        msg += f"• <b>Fiyat:</b> {row['close']:.2f} TL | <b>Değişim:</b> %{row['change_%']:+.2f}\n"
+        msg += f"• <b>Bölge:</b> <i>{row['entry_status']}</i>\n"
+        msg += f"• <b>Teyit:</b> <i>{trend_icon} | {squeeze_icon}</i>\n"
+        msg += f"💰 <b>KASA ÖNERİSİ:</b> <b>{row['allocation']}</b>\n\n"
         
     msg += "━━━━━━━━━━━━━━━━━━━━\n"
-    msg += f"🎯 <i>Toplam {len(shocks)} adet {min_score:.1f}+ puanlı şok hissesi tespit edildi.</i>\n\n"
-    msg += "🛑 <b>RİSK KURALI:</b> <i>Stop-Loss seviyesini 10:00 - 10:15 açılış barının en dip fiyatına (ORB Low) koyunuz!</i>"
+    msg += f"🎯 <i>Toplam {len(shocks)} adet yüksek güvenli hisse tespit edildi.</i>\n\n"
+    msg += "🛑 <b>RİSK KURALI:</b> <i>Stop-Loss seviyesini 10:00 - 10:15 açılış barının en dibine (ORB Low) koyunuz!</i>"
     
     return msg
 
@@ -68,18 +74,15 @@ def main():
     update_realized_shock_returns(df_current)
     df_temp = calculate_shock_scores(df_current, pd.DataFrame())
     
-    # 1. Piyasanın anlık oynaklık eşiklerini hesapla
     dynamic_thresholds = compute_dynamic_market_thresholds(df_temp)
     dynamic_weights, ai_status = calibrate_adaptive_weights()
 
-    # 2. Akşam çalışan denetçinin kalibre ettiği dinamik değerleri oku ve koru
     saved_min_score = 75.0
     if os.path.exists(AI_STATE_FILE):
         try:
             with open(AI_STATE_FILE, 'r') as f:
                 saved_state = json.load(f)
                 saved_min_score = saved_state.get('thresholds', {}).get('min_score', 75.0)
-                # Akşam optimize edilen ağırlıkları koru
                 if 'weights' in saved_state:
                     dynamic_weights = saved_state['weights']
         except Exception:
