@@ -39,7 +39,7 @@ def format_shock_report(df_scored, thresholds, weights, ai_status):
     min_score = thresholds.get('min_score', 75.0)
     shocks = df_scored[df_scored['shock_score'] >= min_score].sort_values(by='shock_score', ascending=False)
     
-    msg = f"⚡ <b>BIST GÜVEN SKORLU ŞOK & SWING LİSTESİ ({min_score:.1f}+)</b>\n"
+    msg = f"⚡ <b>BIST GÜVEN SKORLU ŞOK LİSTESİ ({min_score:.1f}+)</b>\n"
     msg += f"🗓 <i>{datetime.now().strftime('%Y-%m-%d')} | Saat: 10:30 Seans Açılışı</i>\n"
     msg += "━━━━━━━━━━━━━━━━━━━━\n\n"
     
@@ -48,13 +48,12 @@ def format_shock_report(df_scored, thresholds, weights, ai_status):
         return msg
 
     for idx, row in shocks.iterrows():
-        trend_icon = "EMA20 Üstü ✅" if row.get('is_above_trend') else "EMA20 Altı ⚠️"
-        squeeze_icon = "Sıkışma Kırılımı 💎" if row.get('is_squeezed') else "Standart Mum"
+        trend_icon = "Trend Desteği Güçlü (EMA20 Üstü) ✅" if row.get('is_above_trend') else "EMA20 Altı (Zayıf Trend) ⚠️"
         
         msg += f"🚀 <b>#{row['ticker']}</b> ── <b>{row['shock_score']:.1f} Puan</b> ({row['stars']})\n"
         msg += f"• <b>Fiyat:</b> {row['close']:.2f} TL | <b>Değişim:</b> %{row['change_%']:+.2f}\n"
-        msg += f"• <b>Bölge:</b> <i>{row['entry_status']}</i>\n"
-        msg += f"• <b>Teyit:</b> <i>{trend_icon} | {squeeze_icon}</i>\n"
+        msg += f"• <b>Giriş Marjı:</b> <i>{row['entry_status']}</i>\n"
+        msg += f"• <b>Trend:</b> <i>{trend_icon}</i>\n"
         msg += f"💰 <b>KASA ÖNERİSİ:</b> <b>{row['allocation']}</b>\n\n"
         
     msg += "━━━━━━━━━━━━━━━━━━━━\n"
