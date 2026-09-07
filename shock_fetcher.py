@@ -6,10 +6,12 @@ from datetime import datetime
 def get_bist_raw_data():
     """TradingView üzerinden mikroyapı, hacim, menzil ve VWAP verilerini çeker."""
     url = "https://scanner.tradingview.com/turkey/scan"
+    
+    # AKILLI FİLTRE: Sabah 10:30 için 8M barajı 3.5M'ye çekildi, kapsama alanı 450 hisseye çıkarıldı
     payload = {
         "filter": [
             {"left": "type", "operation": "equal", "right": "stock"},
-            {"left": "Value.Traded", "operation": "greater", "right": 8000000}
+            {"left": "Value.Traded", "operation": "greater", "right": 3500000}  # 8M -> 3.5M TL
         ],
         "columns": [
             "name", "close", "open", "high", "low", "volume", "change", "Value.Traded",
@@ -18,10 +20,10 @@ def get_bist_raw_data():
             "Perf.1M",
             "Perf.3M",
             "Volatility.D",
-            "VWAP" # KURUMSAL VWAP VERİSİ EKLENDİ
+            "VWAP"
         ],
         "sort": {"sortBy": "Value.Traded", "sortOrder": "desc"},
-        "range": [0, 300]
+        "range": [0, 450]  # İlk 300 yerine ilk 450 hisse
     }
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
