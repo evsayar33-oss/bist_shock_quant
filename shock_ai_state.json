@@ -2,15 +2,15 @@
     "thresholds": {
         "th_vol": 0.8,
         "th_range": 6.0,
-        "th_flow": 3.1,
+        "th_flow": 2.5,
         "th_lambda": 1.15,
-        "min_score": 76.0
+        "min_score": 77.0
     },
     "weights": {
-        "vol": 0.48,
+        "vol": 0.45,
         "range": 0.2,
-        "flow": 0.2,
+        "flow": 0.23,
         "lambda": 0.12
     },
-    "status": "\ud83e\udde0 AI \u00d6Z-\u00d6\u011eRENME AKT\u0130F (E\u011fitilen Sinyal: 38)"
+    "status": "\u26a1 OTOMAT\u0130K KAL\u0130BRE ED\u0130LD\u0130 (Ba\u015far\u0131: %87 | Hedef Skor: 77.0)"
 }
