@@ -1,0 +1,27 @@
+name: BIST Evening Audit
+
+on:
+  schedule:
+    # Hafta içi her gün TSİ 18:40 (UTC 15:40)
+    - cron: '00 10 * * 1-5'
+  workflow_dispatch:
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Python Kurulumu
+        uses: setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Kütüphaneleri Yükle
+        run: pip install -r requirements.txt
+
+      - name: Gün Sonu Denetimini Çalıştır
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          CHAT_ID: ${{ secrets.CHAT_ID }}
+        run: python shock_auditor.py
