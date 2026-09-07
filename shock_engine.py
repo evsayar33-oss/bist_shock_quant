@@ -45,11 +45,10 @@ def calculate_shock_scores(df, df_gecmis, dynamic_thresholds=None, dynamic_weigh
         vwap = float(item.get('vwap', 0.0))
 
         # =========================================================================
-        # 1. VWAP & SABAH TUZAĞI KALKANI
+        # 1. AKILLI VWAP KONTROLÜ (%1.0 sabah gürültüsü marjı)
         # =========================================================================
-        # Fiyat VWAP'ın altındaysa kurumlar mal dağıtıyordur -> DİSKALİFİYE!
         is_below_vwap = False
-        if vwap > 0 and close < (vwap * 0.998):
+        if vwap > 0 and close < (vwap * 0.990):  # 0.998 yerine 0.990 yapıldı
             is_below_vwap = True
 
         # 2. ÇOK BOYUTLU SAPMALAR
@@ -59,7 +58,9 @@ def calculate_shock_scores(df, df_gecmis, dynamic_thresholds=None, dynamic_weigh
         safe_atr = max(atr, 0.01)
         z_range = round(min(max(float(((today_range / safe_atr) - 1.0) * 2.5), -2.0), 6.0), 2)
 
-        raw_lambda = (abs(change) / ((value_traded / 10000000.0) + 1e-9)) if value_traded > 0 else 0.0
+        # AKILLI LAMBDA: Hacmi sığ tahtaların skoru yapay olarak şişirmesini engeller (TKNKA/EDIP tuzağı önlemi)
+        liquidity_damping = min(value_traded / 12000000.0, 1.0) if value_traded > 0 else 0.0
+        raw_lambda = ((abs(change) / ((value_traded / 10000000.0) + 1e-9)) * liquidity_damping) if value_traded > 0 else 0.0
         z_lambda = round(min(float(np.log1p(raw_lambda) * 2.0), 5.0), 2)
 
         if today_range > 0:
@@ -71,7 +72,7 @@ def calculate_shock_scores(df, df_gecmis, dynamic_thresholds=None, dynamic_weigh
         aggressor_flow = (max(clv, 0.0) * 0.55) + (max(body_eff, 0.0) * 0.45)
         z_flow = round(float(aggressor_flow * 4.0), 2)
 
-        # 3. SENKRONİZASYON KONTROLÜ
+        # 3. SENKRONİZASYON & AKILLI DÜŞEN BIÇAK
         shock_count = 0
         if z_vol >= dynamic_thresholds['th_vol']: shock_count += 1
         if z_range >= dynamic_thresholds['th_range']: shock_count += 1
@@ -80,7 +81,10 @@ def calculate_shock_scores(df, df_gecmis, dynamic_thresholds=None, dynamic_weigh
 
         concordance_multiplier = 1.0 + (shock_count * 0.25)
         is_fresh_shock = (perf_1m <= 22.0) and (perf_3m >= -10.0)
-        is_downtrend_knife = (perf_3m < -25.0)
+        
+        # AKILLI DÜŞEN BIÇAK: Eğer hisse dipteyse AMA hacim devasaysa (z_vol >= 2.5) eleme, dipten dönüş kabul et!
+        is_downtrend_knife = (perf_3m < -25.0) and (z_vol < 2.5)
+        is_bottom_reversal = (perf_3m < -25.0) and (z_vol >= 2.5) and (z_flow >= 1.8)
 
         item['z_vol'] = z_vol
         item['z_range'] = z_range
@@ -90,6 +94,7 @@ def calculate_shock_scores(df, df_gecmis, dynamic_thresholds=None, dynamic_weigh
         item['concordance_mult'] = concordance_multiplier
         item['is_fresh_shock'] = is_fresh_shock
         item['is_downtrend_knife'] = is_downtrend_knife
+        item['is_bottom_reversal'] = is_bottom_reversal
         item['is_below_vwap'] = is_below_vwap
         scored_data.append(item)
 
@@ -117,7 +122,7 @@ def calculate_shock_scores(df, df_gecmis, dynamic_thresholds=None, dynamic_weigh
 
     raw_score = np.clip(np.round(raw_score, 1), 0.0, 99.5)
 
-    # VWAP Altındakileri, Düşen Bıçakları ve Negatifleri SIFIRLA!
+    # VWAP Altındakileri ve Gerçek Düşen Bıçakları SIFIRLA!
     res_df['shock_score'] = np.where(
         (res_df['change_%'] > 0) & (~res_df['is_downtrend_knife']) & (~res_df['is_below_vwap']),
         raw_score,
@@ -128,6 +133,7 @@ def calculate_shock_scores(df, df_gecmis, dynamic_thresholds=None, dynamic_weigh
     conditions = [
         res_df['is_below_vwap'],
         res_df['is_downtrend_knife'],
+        res_df['is_bottom_reversal'],
         (res_df['shock_score'] >= 75.0) & (res_df['shock_count'] >= 3) & (res_df['is_fresh_shock']),
         (res_df['shock_score'] >= 55.0) & (res_df['shock_count'] >= 2),
         (res_df['change_%'] < -2.0) & (res_df['z_vol'] >= 1.5)
@@ -135,13 +141,14 @@ def calculate_shock_scores(df, df_gecmis, dynamic_thresholds=None, dynamic_weigh
     choices = [
         "🚨 VWAP ALTI (SABAH TUZAĞI)",
         "🪤 DÜŞEN BIÇAK TUZAĞI",
+        "⚡ DİPTEN ŞOK DÖNÜŞÜ (REVERSAL)",
         "⚡ SENKRONİZE ŞOK PATLAMASI (DAY-1)",
         "🚀 KISMİ HACİM & MENZİL İVMESİ",
         "🚨 KURUMSAL BOŞALTIM (DUMP)"
     ]
     res_df['regime'] = np.select(conditions, choices, default="NÖTR REJİM")
 
-    drop_cols = ['pct_vol', 'pct_range', 'pct_lambda', 'pct_flow', 'concordance_mult', 'is_downtrend_knife', 'is_below_vwap']
+    drop_cols = ['pct_vol', 'pct_range', 'pct_lambda', 'pct_flow', 'concordance_mult', 'is_downtrend_knife', 'is_bottom_reversal', 'is_below_vwap']
     res_df = res_df.drop(columns=[col for col in drop_cols if col in res_df.columns])
 
     # Düne Göre Skor Farkı
