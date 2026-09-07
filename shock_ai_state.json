@@ -1,1 +1,1 @@
-{"thresholds": {"th_vol": 1.33, "th_range": 6.0, "th_flow": 3.17, "th_lambda": 0.58}, "weights": {"vol": 0.52, "range": 0.19, "flow": 0.17, "lambda": 0.12}, "status": "\ud83e\udde0 AI \u00d6Z-\u00d6\u011eRENME AKT\u0130F (E\u011fitilen Sinyal: 32)"}
+{"thresholds": {"th_vol": 0.8, "th_range": 6.0, "th_flow": 2.64, "th_lambda": 1.32}, "weights": {"vol": 0.51, "range": 0.2, "flow": 0.17, "lambda": 0.12}, "status": "\ud83e\udde0 AI \u00d6Z-\u00d6\u011eRENME AKT\u0130F (E\u011fitilen Sinyal: 38)"}
