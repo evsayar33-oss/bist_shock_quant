@@ -20,20 +20,46 @@ def send_telegram_message(message):
     chat_id = os.environ.get('CHAT_ID')
     
     if not token or not chat_id:
-        print("Telegram Token veya Chat ID bulunamadı.")
+        print("❌ Hata: Telegram Token veya Chat ID bulunamadı.")
         return
 
     url = f"https://api.telegram.org/bot{token}/sendMessage"
-    payload = {
-        "chat_id": chat_id,
-        "text": message,
-        "parse_mode": "HTML",
-        "disable_web_page_preview": True
-    }
-    try:
-        requests.post(url, json=payload, timeout=10)
-    except Exception as e:
-        print(f"Telegram hatası: {e}")
+
+    # Telegram 4096 Karakter Koruması: Mesaj uzunsa güvenle parçalara böl
+    max_len = 3800
+    messages = []
+    if len(message) > max_len:
+        parts = message.split("\n\n")
+        current_msg = ""
+        for p in parts:
+            if len(current_msg) + len(p) + 2 < max_len:
+                current_msg += p + "\n\n"
+            else:
+                messages.append(current_msg.strip())
+                current_msg = p + "\n\n"
+        if current_msg:
+            messages.append(current_msg.strip())
+    else:
+        messages = [message]
+
+    for idx, msg in enumerate(messages):
+        payload = {
+            "chat_id": chat_id,
+            "text": msg,
+            "parse_mode": "HTML",
+            "disable_web_page_preview": True
+        }
+        try:
+            res = requests.post(url, json=payload, timeout=15)
+            res_data = res.json()
+            if res_data.get("ok"):
+                print(f"✅ Telegram mesajı başarıyla iletildi (Parça {idx+1}/{len(messages)}).")
+            else:
+                print(f"⚠️ Telegram API Hatası: {res_data.get('description')}. HTML kaldırılıp tekrar deneniyor...")
+                payload.pop("parse_mode")
+                requests.post(url, json=payload, timeout=15)
+        except Exception as e:
+            print(f"❌ Telegram bağlantı hatası: {e}")
 
 def format_shock_report(df_scored, thresholds, weights, ai_status):
     min_score = thresholds.get('min_score', 75.0)
@@ -48,7 +74,7 @@ def format_shock_report(df_scored, thresholds, weights, ai_status):
         return msg
 
     for idx, row in shocks.iterrows():
-        trend_icon = "Trend Desteği Güçlü (EMA20 Üstü) ✅" if row.get('is_above_trend') else "EMA20 Altı (Zayıf Trend) ⚠️"
+        trend_icon = "EMA20 Üstü ✅" if row.get('is_above_trend') else "EMA20 Altı ⚠️"
         
         msg += f"🚀 <b>#{row['ticker']}</b> ── <b>{row['shock_score']:.1f} Puan</b> ({row['stars']})\n"
         msg += f"• <b>Fiyat:</b> {row['close']:.2f} TL | <b>Değişim:</b> %{row['change_%']:+.2f}\n"
@@ -116,7 +142,7 @@ def main():
 
     telegram_msg = format_shock_report(df_scored, dynamic_thresholds, dynamic_weights, ai_status)
     send_telegram_message(telegram_msg)
-    print(f"[{datetime.now().strftime('%H:%M:%S')}] 10:30 Raporu Telegram'a başarıyla iletildi.")
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] Tarama ve Telegram raporlama süreci tamamlandı.")
 
 if __name__ == "__main__":
     main()
