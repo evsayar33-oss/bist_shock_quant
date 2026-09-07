@@ -26,13 +26,11 @@ def send_telegram_audit(message):
 def run_evening_audit():
     print(f"[{datetime.now().strftime('%H:%M:%S')}] Gün Sonu Teşhis & Hata Analizi Başlatılıyor...")
     
-    # 1. Günün Kapanış Verilerini Çek
     df_close = get_bist_raw_data()
     if df_close.empty:
         print("Kapanış verisi alınamadı.")
         return
 
-    # 2. Sabahın 10:30 Tahminlerini Oku
     if not os.path.exists("gecmis_veri.csv"):
         print("Geçmiş veri bulunamadı.")
         return
@@ -41,30 +39,24 @@ def run_evening_audit():
     df_gecmis['tarih'] = pd.to_datetime(df_gecmis['tarih'])
     bugun = pd.Timestamp.now().normalize()
     
-    # Bugün sabah 75+ skor alanlar
     morning_picks = df_gecmis[(df_gecmis['tarih'] == bugun) & (df_gecmis['shock_score'] >= 75.0)]
     morning_tickers = morning_picks['ticker'].tolist()
 
-    # 3. Gerçekte Günün Şok Yapanları (%6 ve üzeri artanlar)
     actual_runners = df_close[df_close['change_%'] >= 6.0].sort_values(by='change_%', ascending=False)
     actual_tickers = actual_runners['ticker'].tolist()
 
-    # A) Başarılı Tespitler (True Positives)
     hits = [t for t in morning_tickers if t in actual_tickers]
     
-    # B) Tuzağa Düşenler (False Positives - Sabah önerildi ama akşam eksi kapattı veya patladı)
     traps = []
     for t in morning_tickers:
         close_row = df_close[df_close['ticker'] == t]
         if not close_row.empty:
             chg = close_row['change_%'].values[0]
-            if chg < 2.0: # Sabah şok denip akşama sönenler
+            if chg < 2.0:
                 traps.append((t, chg))
 
-    # C) Kaçırılan Fırsatlar (False Negatives - Akşam coşan ama sabah yakalayamadıklarımız)
     missed = [t for t in actual_tickers if t not in morning_tickers][:10]
 
-    # Teşhis ve Rapor Oluşturma
     report = "📋 <b>GÜN SONU SİSTEM DENETİM VE TEŞHİS RAPORU</b>\n"
     report += f"🗓 <i>{datetime.now().strftime('%Y-%m-%d')} | Piyasa Kapanışı</i>\n"
     report += "━━━━━━━━━━━━━━━━━━━━\n\n"
@@ -91,11 +83,11 @@ def run_evening_audit():
         for t in missed:
             row = df_close[df_close['ticker'] == t].iloc[0]
             reasons = []
-            if row['value_traded'] < 8000000:
-                reasons.append("Hacim < 8M TL")
+            if row['value_traded'] < 3500000:
+                reasons.append("Hacim < 3.5M TL")
             if row['perf_3m'] < -25.0:
-                reasons.append("Dip Cezası (Perf3M < -25)")
-            if row['close'] < row.get('vwap', 0):
+                reasons.append("Dipte (Perf3M < -25)")
+            if row['close'] < (row.get('vwap', 0) * 0.99):
                 reasons.append("VWAP Altı")
             if not reasons:
                 reasons.append("Düşük Senkronizasyon/Skor")
@@ -107,12 +99,12 @@ def run_evening_audit():
     report += "\n━━━━━━━━━━━━━━━━━━━━\n"
     report += "💡 <b>ALGORİTMA GELİŞTİRME TAVSİYESİ:</b>\n"
     if len(missed) > len(hits):
-        report += "⚠️ <i>Bugün kaçan hisse sayısı çok yüksek. Sabah 10:30'daki 8M TL filtre barajını 4M TL'ye çekmeyi veya Perf.3M dip cezasını esnetmeyi düşünün.</i>"
+        report += "⚠️ <i>Bugün kaçan hisse sayısı yüksek. Akşam kapanışındaki filtreleri sabah açılış dinamikleriyle karşılaştırın.</i>"
     else:
         report += "🎯 <i>Algoritma filtreleri bugünkü piyasa rejimiyle dengeli çalıştı.</i>"
 
     send_telegram_audit(report)
-    print("Gün sonu raporu gönderildi.")
+    print("Gün sonu raporu tamamlandı.")
 
 if __name__ == "__main__":
     run_evening_audit()
