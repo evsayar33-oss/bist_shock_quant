@@ -1,9 +1,12 @@
-name: BIST Evening Audit
+name: BIST Evening Audit & Auto-Calibration
 
 on:
   schedule:
     - cron: '10 10 * * 1-5'
   workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   audit:
@@ -20,8 +23,15 @@ jobs:
       - name: Paketleri Yukle
         run: pip install -r requirements.txt
 
-      - name: Denetimi Calistir
+      - name: Denetimi ve Otonom Ogrenmeyi Calistir
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           CHAT_ID: ${{ secrets.CHAT_ID }}
         run: python shock_auditor.py
+
+      - name: Yeni Parametreleri Repoya Otomatik Commit Et
+        run: |
+          git config --global user.name "QuantBot Auto-Learning"
+          git config --global user.email "bot@quant.local"
+          git add shock_ai_state.json
+          git diff-index --quiet HEAD || (git commit -m "🤖 Auto-Calibration: Updated AI state from evening audit" && git push)
