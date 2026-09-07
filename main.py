@@ -36,21 +36,23 @@ def send_telegram_message(message):
         print(f"Telegram hatası: {e}")
 
 def format_shock_report(df_scored, thresholds, weights, ai_status):
-    shocks = df_scored[df_scored['shock_score'] >= 75.0].sort_values(by='shock_score', ascending=False)
+    # Akşam denetiminden gelen dinamik hedef skoru al (Yoksa varsayılan 75.0)
+    min_score = thresholds.get('min_score', 75.0)
+    shocks = df_scored[df_scored['shock_score'] >= min_score].sort_values(by='shock_score', ascending=False)
     
-    msg = "⚡ <b>BIST ŞOK PATLAMA LİSTESİ (75+ PUAN)</b>\n"
+    msg = f"⚡ <b>BIST ŞOK PATLAMA LİSTESİ ({min_score:.1f}+ PUAN)</b>\n"
     msg += f"🗓 <i>{datetime.now().strftime('%Y-%m-%d')} | Saat: 10:30 Seans Açılışı</i>\n"
     msg += "━━━━━━━━━━━━━━━━━━━━\n\n"
     
     if shocks.empty:
-        msg += "ℹ️ <i>Bugün 75 puan ve üzeri kriteri karşılayan (VWAP üstü) bir şok hissesi bulunamadı.</i>"
+        msg += f"ℹ️ <i>Bugün {min_score:.1f} puan ve üzeri kriteri karşılayan (VWAP üstü) bir şok hissesi bulunamadı.</i>"
         return msg
 
     for idx, row in shocks.iterrows():
         msg += f"🚀 <b>#{row['ticker']}</b> ── <b>{row['shock_score']:.1f} Puan</b>  <i>({row['close']:.2f} TL | %{row['change_%']:+.2f})</i>\n\n"
         
     msg += "━━━━━━━━━━━━━━━━━━━━\n"
-    msg += f"🎯 <i>Toplam {len(shocks)} adet 75+ puanlı şok hissesi tespit edildi.</i>\n\n"
+    msg += f"🎯 <i>Toplam {len(shocks)} adet {min_score:.1f}+ puanlı şok hissesi tespit edildi.</i>\n\n"
     msg += "🛑 <b>RİSK KURALI:</b> <i>Stop-Loss seviyesini 10:00 - 10:15 açılış barının en dip fiyatına (ORB Low) koyunuz!</i>"
     
     return msg
@@ -65,11 +67,28 @@ def main():
 
     update_realized_shock_returns(df_current)
     df_temp = calculate_shock_scores(df_current, pd.DataFrame())
+    
+    # 1. Piyasanın anlık oynaklık eşiklerini hesapla
     dynamic_thresholds = compute_dynamic_market_thresholds(df_temp)
     dynamic_weights, ai_status = calibrate_adaptive_weights()
 
+    # 2. Akşam çalışan denetçinin kalibre ettiği dinamik değerleri oku ve koru
+    saved_min_score = 75.0
+    if os.path.exists(AI_STATE_FILE):
+        try:
+            with open(AI_STATE_FILE, 'r') as f:
+                saved_state = json.load(f)
+                saved_min_score = saved_state.get('thresholds', {}).get('min_score', 75.0)
+                # Akşam optimize edilen ağırlıkları koru
+                if 'weights' in saved_state:
+                    dynamic_weights = saved_state['weights']
+        except Exception:
+            pass
+
+    dynamic_thresholds['min_score'] = saved_min_score
+
     with open(AI_STATE_FILE, 'w') as f:
-        json.dump({"thresholds": dynamic_thresholds, "weights": dynamic_weights, "status": ai_status}, f)
+        json.dump({"thresholds": dynamic_thresholds, "weights": dynamic_weights, "status": ai_status}, f, indent=4)
 
     df_gecmis = gecmis_veriyi_yukle()
     df_scored = calculate_shock_scores(df_current, df_gecmis, dynamic_thresholds, dynamic_weights)
