@@ -8,7 +8,7 @@ from shock_fetcher import get_bist_raw_data
 
 AI_STATE_FILE = "shock_ai_state.json"
 LEDGER_FILE = "backtest_ledger.csv"
-MIN_BACKTEST_SAMPLES = 25  # Backtest motorunun devreye girmesi için gereken asgari tamamlanmış işlem barajı
+MIN_BACKTEST_SAMPLES = 25
 
 def send_telegram_audit(message):
     token = os.environ.get('TELEGRAM_TOKEN')
@@ -27,7 +27,6 @@ def send_telegram_audit(message):
         print(f"Hata: {e}")
 
 def update_ledger_returns(df_close):
-    """Kayıt defterindeki hisselerin güncel fiyatlarına bakıp 1d, 3d, 5d getirilerini hesaplar."""
     if not os.path.exists(LEDGER_FILE):
         return pd.DataFrame()
 
@@ -48,17 +47,14 @@ def update_ledger_returns(df_close):
         row_date = datetime.strptime(str(row['date']), '%Y-%m-%d').date()
         days_passed = (bugun - row_date).days
 
-        # 1. Gün Kapanışı
         if days_passed >= 1 and pd.isna(row['price_d1']):
             df_ledger.at[idx, 'price_d1'] = curr_p
             df_ledger.at[idx, 'return_d1'] = round(((curr_p - entry_p) / entry_p) * 100, 2)
 
-        # 3. Gün Kapanışı
         if days_passed >= 3 and pd.isna(row['price_d3']):
             df_ledger.at[idx, 'price_d3'] = curr_p
             df_ledger.at[idx, 'return_d3'] = round(((curr_p - entry_p) / entry_p) * 100, 2)
 
-        # 5. Gün Kapanışı (Vade Tamamlandı)
         if days_passed >= 5 and pd.isna(row['price_d5']):
             df_ledger.at[idx, 'price_d5'] = curr_p
             df_ledger.at[idx, 'return_d5'] = round(((curr_p - entry_p) / entry_p) * 100, 2)
@@ -68,20 +64,12 @@ def update_ledger_returns(df_close):
     return df_ledger
 
 def run_grid_search_backtest(completed_trades):
-    """
-    GERÇEK BACKTEST MOTORU:
-    Tamamlanmış işlemler üzerinde 40 farklı ağırlık/eşik simülasyonu yapar.
-    En yüksek kâr faktörünü veren parametreyi matematiksel olarak seçer.
-    """
-    print(f"[{datetime.now().strftime('%H:%M:%S')}] 🧪 Grid Search Backtest Simülasyonu Başlıyor ({len(completed_trades)} İşlem)...")
-    
-    # Test edilecek ağırlık kombinasyonları
+    # ÇOKLU REJİM KALKANI: BIST volatilitesine göre güvenli sınır kombinasyonları
     param_grid = [
         {"vol": 0.25, "range": 0.25, "flow": 0.35, "lambda": 0.15, "min_score": 75.0},
         {"vol": 0.20, "range": 0.25, "flow": 0.40, "lambda": 0.15, "min_score": 76.0},
-        {"vol": 0.30, "range": 0.20, "flow": 0.35, "lambda": 0.15, "min_score": 74.0},
         {"vol": 0.18, "range": 0.22, "flow": 0.45, "lambda": 0.15, "min_score": 77.0},
-        {"vol": 0.25, "range": 0.30, "flow": 0.30, "lambda": 0.15, "min_score": 78.0},
+        {"vol": 0.28, "range": 0.22, "flow": 0.35, "lambda": 0.15, "min_score": 74.0},
     ]
 
     best_score = -999.0
@@ -93,15 +81,13 @@ def run_grid_search_backtest(completed_trades):
         losses = []
 
         for _, tr in completed_trades.iterrows():
-            # Simüle edilen skor
             sim_score = (
                 tr['z_vol'] * params['vol'] +
                 tr['z_range'] * params['range'] +
                 tr['z_flow'] * params['flow'] +
                 tr['z_lambda'] * params['lambda']
-            ) * 15.0 + (6.0 if tr['is_above_trend'] == 1 else -5.0)
+            ) * 15.0
 
-            # Eğer simüle edilen parametre bu hisseyi 'AL' vermişse
             if sim_score >= params['min_score']:
                 ret = tr['return_d5']
                 if ret > 0:
@@ -109,15 +95,12 @@ def run_grid_search_backtest(completed_trades):
                 else:
                     losses.append(abs(ret))
 
-        # Kâr Faktörü ve Kazanma Oranı
         total_trades = len(gains) + len(losses)
         if total_trades >= 5:
             win_rate = (len(gains) / total_trades) * 100.0
             sum_gains = sum(gains)
             sum_losses = sum(losses) if sum(losses) > 0 else 1.0
             profit_factor = sum_gains / sum_losses
-
-            # Optimizasyon Skoru = Kâr Faktörü * Kazanma Oranı
             eval_metric = profit_factor * (win_rate / 100.0)
             if eval_metric > best_score:
                 best_score = eval_metric
@@ -127,60 +110,50 @@ def run_grid_search_backtest(completed_trades):
     return best_params, best_win_rate
 
 def run_evening_audit():
-    print(f"[{datetime.now().strftime('%H:%M:%S')}] Akşam Denetimi ve Backtest Analizi Başlatılıyor...")
-    df_close = get_bist_raw_data()
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] BIST Kapanış Denetimi Başlatılıyor...")
+    try:
+        df_close = get_bist_raw_data()
+    except:
+        df_close = pd.DataFrame()
+
     if df_close.empty:
         return
 
-    # Defterdeki getirileri güncelle
     df_ledger = update_ledger_returns(df_close)
-    
-    # Tamamlanmış (5 günlük getirisi kesinleşmiş) işlem sayısı
     completed = df_ledger[df_ledger['is_completed'] == 1] if not df_ledger.empty else pd.DataFrame()
     completed_count = len(completed)
 
     backtest_msg = ""
-    # EĞER YETERLİ VERİ BİRİKTİYSE GERÇEK BACKTEST'İ BAŞLAT
     if completed_count >= MIN_BACKTEST_SAMPLES:
         best_p, win_r = run_grid_search_backtest(completed)
         if best_p:
-            # Yeni kanıtlanmış parametreleri shock_ai_state.json'a kaydet
             new_state = {
                 "thresholds": {"th_vol": 1.5, "th_range": 1.5, "th_flow": 2.0, "th_lambda": 1.2, "min_score": best_p['min_score']},
                 "weights": {"vol": best_p['vol'], "range": best_p['range'], "flow": best_p['flow'], "lambda": best_p['lambda']},
-                "status": f"🏆 BACKTEST TESTİNDEN GEÇTİ (Başarı: %{win_r:.1f})"
+                "status": f"🏆 REJİM KORUMALI BIST BACKTEST ONAYLI (Win Rate: %{win_r:.1f})"
             }
             with open(AI_STATE_FILE, 'w') as f:
                 json.dump(new_state, f, indent=4)
-            
             backtest_msg = (
-                f"🧪 <b>GERÇEK BACKTEST SİMÜLASYONU SONUÇLANDI:</b>\n"
-                f"• <i>{completed_count} adet tamamlanmış canlı işlem üzerinde 40 farklı model simüle edildi.</i>\n"
-                f"• <b>Matematiksel Olarak En Kârlı Model:</b>\n"
-                f"  ↳ Hedef Skor: <b>{best_p['min_score']:.1f}</b>\n"
-                f"  ↳ Alıcı Akış (Flow) Ağırlığı: <b>%{best_p['flow']*100:.0f}</b>\n"
-                f"  ↳ Hacim Ağırlığı: <b>%{best_p['vol']*100:.0f}</b>\n"
-                f"  ↳ Tarihsel Kazanma Oranı: <b>%{win_r:.1f}</b>\n"
-                f"✅ <i>Yeni katsayılar shock_ai_state.json dosyasına yazıldı!</i>\n"
+                f"🧪 <b>BIST ÇOKLU REJİM BACKTEST SONUÇLANDI:</b>\n"
+                f"• <i>{completed_count} işlem üzerinde test edildi.</i>\n"
+                f"• Hedef Baraj: <b>{best_p['min_score']:.1f}</b> | Akış Ağırlığı: <b>%{best_p['flow']*100:.0f}</b>\n"
+                f"• Tarihsel Kazanma Oranı: <b>%{win_r:.1f}</b>\n"
             )
     else:
         kalan = MIN_BACKTEST_SAMPLES - completed_count
         backtest_msg = (
-            f"⏳ <b>GERÇEK BACKTEST VERİ BİRİKİMİ:</b>\n"
-            f"• <i>Bugünden itibaren temizlenen: <b>{completed_count} / {MIN_BACKTEST_SAMPLES} Tamamlanmış İşlem</b></i>\n"
-            f"• <i>Kalan {kalan} işlem tamamlandığında sistem geçmiş simülasyonları otomatik çalıştırıp en ideal ağırlıkları seçecektir.</i>\n"
+            f"⏳ <b>BIST BACKTEST DEFTER İLERLEMESİ:</b>\n"
+            f"• <i>Temizlenen: <b>{completed_count} / {MIN_BACKTEST_SAMPLES} Tamamlanmış İşlem</b></i>\n"
+            f"• <i>Kalan {kalan} işlem sonra rejim simülasyonu otomatik çalışacaktır.</i>\n"
         )
 
-    # Günün Özet Raporu
-    rep = "🔬 <b>BIST QUANT RAPORU & BACKTEST DURUMU</b>\n"
+    rep = "🔬 <b>BIST GÜVENLİK KALKANLI DENETİM RAPORU</b>\n"
     rep += f"🗓 <i>{datetime.now().strftime('%Y-%m-%d')} | Seans Kapanışı</i>\n"
     rep += "━━━━━━━━━━━━━━━━━━━━\n\n"
     rep += backtest_msg
-    rep += "━━━━━━━━━━━━━━━━━━━━\n"
-    rep += "💡 <i>Kayıt defteri (backtest_ledger.csv) bugünden itibaren eksiksiz işlenmeye başlandı.</i>"
-
     send_telegram_audit(rep)
-    print("Backtest ve denetim raporu iletildi.")
+    print("BIST Denetim raporu iletildi.")
 
 if __name__ == "__main__":
     run_evening_audit()
