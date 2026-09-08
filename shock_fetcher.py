@@ -4,7 +4,7 @@ import numpy as np
 from datetime import datetime
 
 def get_bist_raw_data():
-    """TradingView üzerinden mikroyapı, hacim, menzil ve hareketli ortalama verilerini çeker."""
+    """TradingView üzerinden mikroyapı, hacim, menzil ve VWAP verilerini çeker."""
     url = "https://scanner.tradingview.com/turkey/scan"
     payload = {
         "filter": [
@@ -18,9 +18,7 @@ def get_bist_raw_data():
             "Perf.1M",
             "Perf.3M",
             "Volatility.D",
-            "VWAP",
-            "EMA20",
-            "SMA50"
+            "VWAP"
         ],
         "sort": {"sortBy": "Value.Traded", "sortOrder": "desc"},
         "range": [0, 450]
@@ -51,9 +49,7 @@ def get_bist_raw_data():
                 "perf_1m": float(d[10]) if len(d) > 10 and d[10] is not None else 0.0,
                 "perf_3m": float(d[11]) if len(d) > 11 and d[11] is not None else 0.0,
                 "volatility": float(d[12]) if len(d) > 12 and d[12] is not None else 2.0,
-                "vwap": float(d[13]) if len(d) > 13 and d[13] is not None else 0.0,
-                "ema20": float(d[14]) if len(d) > 14 and d[14] is not None else 0.0,
-                "sma50": float(d[15]) if len(d) > 15 and d[15] is not None else 0.0
+                "vwap": float(d[13]) if len(d) > 13 and d[13] is not None else 0.0
             })
         return pd.DataFrame(rows)
     except Exception as e:
@@ -61,7 +57,7 @@ def get_bist_raw_data():
         return pd.DataFrame()
 
 def fetch_all_data():
-    print(f"[{datetime.now().strftime('%H:%M:%S')}] Çok boyutlu şok ve trend verileri toplanıyor...")
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] BIST Çok Boyutlu Şok ve Akış Verileri Toplanıyor...")
     df = get_bist_raw_data()
     if df.empty:
         return df
