@@ -1,7 +1,8 @@
-name: BIST Evening Audit & Auto-Calibration
+name: BIST Evening Audit & Backtest
 
 on:
   schedule:
+    # Hafta içi her gün TSİ 18:40 (UTC 15:40)
     - cron: '10 10 * * 1-5'
   workflow_dispatch:
 
@@ -23,15 +24,15 @@ jobs:
       - name: Paketleri Yukle
         run: pip install -r requirements.txt
 
-      - name: Denetimi ve Otonom Ogrenmeyi Calistir
+      - name: Kapanis Denetimini Calistir
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           CHAT_ID: ${{ secrets.CHAT_ID }}
         run: python shock_auditor.py
 
-      - name: Yeni Parametreleri ve Defteri Repoya Otomatik Kaydet
+      - name: Sonuclari ve Yeni Parametreleri Kaydet
         run: |
-          git config --global user.name "QuantBot Auto-Learning"
-          git config --global user.email "bot@quant.local"
-          git add shock_ai_state.json backtest_ledger.csv gecmis_veri.csv shock_signals_log.csv
-          git diff-index --quiet HEAD || (git commit -m "🤖 Auto-Calibration: Updated AI state & Backtest Ledger" && git push)
+          git config --global user.name "QuantBot-BIST"
+          git config --global user.email "bot@bist.local"
+          git add -A
+          git diff-index --quiet HEAD || (git commit -m "🏆 Auto-Calibration: BIST AI State & Ledger" && git push)
