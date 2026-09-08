@@ -3,13 +3,30 @@ import pandas as pd
 import numpy as np
 import os
 import json
+from datetime import datetime
 
-st.set_page_config(page_title="BIST Adaptive Synchronous Shock Terminal", layout="wide", page_icon="⚡")
+st.set_page_config(
+    page_title="BIST Quant Momentum & Exit Terminal",
+    layout="wide",
+    page_icon="⚡"
+)
 
-st.title("⚡ BIST Öz-Öğrenen Senkronize Şok Terminali")
-st.markdown("*Sabit eşikleri reddeden; günün piyasa oynaklığına göre **otomatik dinamik eşik belirleyen ve geçmiş kâr/zarardan öğrenen** çok boyutlu quant motoru.*")
+# Koyu Tema ve Modern Kartlar
+st.markdown("""
+<style>
+    .metric-card {
+        background-color: #1E222D;
+        border-radius: 10px;
+        padding: 15px;
+        border-left: 5px solid #2962FF;
+        margin-bottom: 10px;
+    }
+</style>
+""", unsafe_allow_html=True)
 
 AI_STATE_FILE = "shock_ai_state.json"
+GECMIS_DOSYA = "gecmis_veri.csv"
+LEDGER_FILE = "backtest_ledger.csv"
 
 def load_ai_state():
     if os.path.exists(AI_STATE_FILE):
@@ -19,149 +36,176 @@ def load_ai_state():
         except:
             pass
     return {
-        "thresholds": {"th_vol": 1.5, "th_range": 1.5, "th_flow": 2.0, "th_lambda": 1.2},
-        "weights": {"vol": 0.30, "range": 0.30, "flow": 0.25, "lambda": 0.15},
-        "status": "🕒 PİYASA EŞİKLERİ HESAPLANIYOR"
+        "thresholds": {"min_score": 75.0, "th_vol": 1.5, "th_flow": 2.0},
+        "weights": {"vol": 0.30, "flow": 0.25, "range": 0.30, "lambda": 0.15},
+        "status": "AKTİF / OTONOM ÖĞRENME DEVREDE"
     }
 
 def load_data():
-    if os.path.exists("gecmis_veri.csv"):
+    df_scan = pd.DataFrame()
+    df_ledger = pd.DataFrame()
+    
+    if os.path.exists(GECMIS_DOSYA):
         try:
-            df = pd.read_csv("gecmis_veri.csv")
-            if 'tarih' in df.columns:
-                df['tarih'] = pd.to_datetime(df['tarih'])
-            return df
-        except Exception as e:
-            st.error(f"Dosya okuma hatası: {e}")
-            return pd.DataFrame()
-    return pd.DataFrame()
+            df_scan = pd.read_csv(GECMIS_DOSYA)
+            if 'tarih' in df_scan.columns:
+                df_scan['tarih'] = pd.to_datetime(df_scan['tarih'])
+        except:
+            pass
+
+    if os.path.exists(LEDGER_FILE):
+        try:
+            df_ledger = pd.read_csv(LEDGER_FILE)
+        except:
+            pass
+
+    return df_scan, df_ledger
 
 ai_state = load_ai_state()
-df_gecmis = load_data()
+df_scan, df_ledger = load_data()
 
-# --- ÜST AI PANELİ ---
-th = ai_state['thresholds']
-w = ai_state['weights']
-st.info(f"🤖 **Model Durumu:** {ai_state['status']}")
+th = ai_state.get('thresholds', {})
+w = ai_state.get('weights', {})
+min_score = th.get('min_score', 75.0)
 
+# BAŞLIK
+st.title("⚡ BIST Quant Momentum & Çıkış Terminali")
+st.caption(f"🤖 **Model Durumu:** {ai_state.get('status', 'AKTİF')} | 🎯 **Hedef Baraj:** {min_score:.1f} Puan")
+
+# ÜST METRİK PANELİ
 c1, c2, c3, c4 = st.columns(4)
-c1.metric("🎯 Dinamik Hacim Eşiği", f"+{th['th_vol']}σ", f"Ağırlık: %{int(w['vol']*100)}")
-c2.metric("🎯 Dinamik Menzil (ATR) Eşiği", f"+{th['th_range']}σ", f"Ağırlık: %{int(w['range']*100)}")
-c3.metric("🎯 Dinamik Alıcı Akış Eşiği", f"+{th['th_flow']}σ", f"Ağırlık: %{int(w['flow']*100)}")
-c4.metric("🎯 Dinamik Likidite Boşluk Eşiği", f"+{th['th_lambda']}σ", f"Ağırlık: %{int(w['lambda']*100)}")
+
+completed_trades = df_ledger[df_ledger['is_completed'] == 1] if not df_ledger.empty and 'is_completed' in df_ledger.columns else pd.DataFrame()
+win_rate = 0.0
+if not completed_trades.empty and len(completed_trades) > 0:
+    wins = completed_trades[completed_trades['return_d5'] > 0]
+    win_rate = (len(wins) / len(completed_trades)) * 100.0
+
+c1.metric("🎯 Dinamik Baraj", f"{min_score:.1f} Puan", f"Flow Ağırlığı: %{int(w.get('flow', 0.25)*100)}")
+c2.metric("🏆 5G Win Rate", f"%{win_rate:.1f}", f"{len(completed_trades)} Tamamlanmış İşlem")
+c3.metric("🧪 Backtest İlerlemesi", f"{len(completed_trades)} / 25", "25'te Otomatik Grid Search")
+c4.metric("⚡ Hacim Ağırlığı", f"%{int(w.get('vol', 0.30)*100)}", "Sıfır Gecikmeli Mikroyapı")
 
 st.divider()
 
-if not df_gecmis.empty:
-    son_tarih = df_gecmis['tarih'].max()
-    df = df_gecmis[df_gecmis['tarih'] == son_tarih].copy()
-    
-    st.caption(f"🗓️ Son Tarama: **{son_tarih.strftime('%Y-%m-%d')}** | 📊 Taranan Hisse: **{len(df)}**")
+# YAN MENÜ: HİSSE SORGULAMA
+st.sidebar.header("🔍 BIST Hisse Röntgeni")
+search_ticker = st.sidebar.text_input("Hisse Kodu (Örn: THYAO, KARSN):").upper().strip()
 
-    required_cols = ['shock_score', 'score_diff', 'z_vol', 'z_range', 'z_lambda', 'z_flow', 'value_traded', 'change_%', 'shock_count', 'close']
-    for c in required_cols:
-        if c not in df.columns:
-            df[c] = 0.0
+if search_ticker and not df_scan.empty:
+    h_data = df_scan[df_scan['ticker'] == search_ticker]
+    if not h_data.empty:
+        last_row = h_data.sort_values(by='tarih', ascending=False).iloc[0]
+        st.sidebar.subheader(f"#{search_ticker} Analizi")
+        st.sidebar.metric("Quant Güven Skoru", f"{last_row['shock_score']:.1f}", last_row.get('stars', '⭐⭐⭐⭐'))
+        st.sidebar.write(f"**Son Fiyat:** {last_row['close']:.2f} TL ({last_row['change_%']:+.2f}%)")
+        st.sidebar.write(f"**Giriş Durumu:** {last_row.get('entry_status', 'NORMAL')}")
+        st.sidebar.write(f"**Alıcı Akış Baskısı:** {last_row.get('z_flow', 0.0):+.2f}σ")
+        st.sidebar.write(f"**Hacim Şoku:** {last_row.get('z_vol', 0.0):+.2f}σ")
+        st.sidebar.info(f"💰 {last_row.get('allocation', 'Standart Risk')}")
+    else:
+        st.sidebar.warning("Hisse son tarama kayıtlarında bulunamadı.")
+
+# SEKMELER
+tab1, tab2, tab3 = st.tabs(["🚀 Günün Giriş Liderleri", "🛡️ Açık Pozisyonlar & Çıkışlar", "🧪 Canlı Backtest Defteri"])
+
+# TAB 1: GÜNÜN GİRİŞLERİ
+with tab1:
+    st.subheader("🎯 Bugünün Yüksek Güvenli BIST Şok Girişleri")
+    if not df_scan.empty:
+        son_tarih = df_scan['tarih'].max()
+        df_today = df_scan[df_scan['tarih'] == son_tarih].copy()
+        top_candidates = df_today[df_today['shock_score'] >= min_score].sort_values(by='shock_score', ascending=False)
+
+        if not top_candidates.empty:
+            disp_cols = ['ticker', 'shock_score', 'stars', 'close', 'change_%', 'entry_status', 'allocation', 'z_flow', 'z_vol']
+            col_map = {
+                'ticker': 'Hisse',
+                'shock_score': 'Güven Skoru',
+                'stars': 'Yıldız',
+                'close': 'Fiyat (TL)',
+                'change_%': 'Günlük %',
+                'entry_status': 'Bölge',
+                'allocation': 'Önerilen Kasa',
+                'z_flow': 'Akış (Z)',
+                'z_vol': 'Hacim (Z)'
+            }
+            st.dataframe(
+                top_candidates[disp_cols].rename(columns=col_map),
+                column_config={
+                    "Güven Skoru": st.column_config.ProgressColumn("Güven Skoru", min_value=0, max_value=100, format="%.1f"),
+                    "Fiyat (TL)": st.column_config.NumberColumn("Fiyat (TL)", format="%.2f TL"),
+                    "Günlük %": st.column_config.NumberColumn("Günlük %", format="%+0.2f%%"),
+                    "Akış (Z)": st.column_config.NumberColumn("Akış (Z)", format="%+.2fσ"),
+                    "Hacim (Z)": st.column_config.NumberColumn("Hacim (Z)", format="%+.2fσ"),
+                },
+                use_container_width=True,
+                hide_index=True
+            )
         else:
-            df[c] = pd.to_numeric(df[c], errors='coerce').fillna(0).round(2)
+            st.info(f"ℹ️ Bugün {min_score:.1f} puan barajını aşan bir şok hissesi tespit edilemedi.")
+    else:
+        st.info("Henüz tarama verisi bulunmuyor.")
 
-    if 'regime' not in df.columns:
-        df['regime'] = 'NÖTR'
+# TAB 2: AÇIK POZİSYONLAR & ÇIKIŞ / STOP MOTORU
+with tab2:
+    st.subheader("🛡️ Açık Pozisyonlar & Çıkış / Kâr Al Motoru")
+    st.markdown("*Son 5 gün içinde girilmiş BIST işlemlerinin canlı kâr/zarar ve stop durumu.*")
 
-    # SIDEBAR
-    st.sidebar.header("🔍 Hisse Şok Analizi")
-    search_ticker = st.sidebar.text_input("Hisse Kodu (Örn: THYAO):").upper()
-    
-    if search_ticker:
-        h_data = df[df['ticker'] == search_ticker]
-        if not h_data.empty:
-            score = float(h_data['shock_score'].iloc[0])
-            diff = float(h_data['score_diff'].iloc[0])
-            regime = h_data['regime'].iloc[0]
-            zv = float(h_data['z_vol'].iloc[0])
-            zr = float(h_data['z_range'].iloc[0])
-            zl = float(h_data['z_lambda'].iloc[0])
-            sc = int(h_data['shock_count'].iloc[0])
-            
-            st.sidebar.metric(f"{search_ticker} Şok Skoru", f"{score:.1f}", f"{diff:+.1f}")
-            st.sidebar.write(f"**Durum:** {regime}")
-            st.sidebar.write(f"**Eşzamanlı Şok Sayısı:** {sc}/4 Gösterge")
-            st.sidebar.write(f"**Hacim Sapması:** {zv:+.2f}σ (Eşik: +{th['th_vol']}σ)")
-            st.sidebar.write(f"**Menzil (ATR) Sapması:** {zr:+.2f}σ (Eşik: +{th['th_range']}σ)")
-            st.sidebar.write(f"**Likidite Boşluğu:** {zl:+.2f}σ")
-            
-            st.sidebar.write("📈 Son 30 Günlük Şok Trendi:")
-            trend = df_gecmis[df_gecmis['ticker'] == search_ticker][['tarih', 'shock_score']].sort_values('tarih')
-            if not trend.empty:
-                trend.set_index('tarih', inplace=True)
-                st.sidebar.line_chart(trend['shock_score'])
+    if not df_ledger.empty and 'is_completed' in df_ledger.columns:
+        open_pos = df_ledger[df_ledger['is_completed'] == 0].copy()
+        
+        if not open_pos.empty:
+            if not df_scan.empty:
+                son_tarih = df_scan['tarih'].max()
+                current_map = dict(zip(df_scan[df_scan['tarih'] == son_tarih]['ticker'], df_scan[df_scan['tarih'] == son_tarih]['close']))
+            else:
+                current_map = {}
+
+            pos_cards = []
+            for idx, r in open_pos.iterrows():
+                tk = r['ticker']
+                curr_p = current_map.get(tk, r['entry_price'])
+                entry_p = float(r['entry_price'])
+                pnl = ((curr_p - entry_p) / entry_p) * 100.0
+
+                action = "🟢 TAŞIMAYA DEVAM ET"
+                if pnl <= -3.0:
+                    action = "🚨 STOP-LOSS / ÇIKIŞ YAP"
+                elif pnl >= 8.5:
+                    action = "💰 TAVAN KİLİTLEDİ (Yarısını Sat)"
+
+                pos_cards.append({
+                    "Hisse": tk,
+                    "Giriş Tarihi": r['date'],
+                    "Giriş Fiyatı": f"{entry_p:.2f} TL",
+                    "Güncel Fiyat": f"{curr_p:.2f} TL",
+                    "Kâr/Zarar (%)": pnl,
+                    "Aksiyon Sinyali": action
+                })
+
+            df_pos_show = pd.DataFrame(pos_cards)
+            st.dataframe(
+                df_pos_show,
+                column_config={
+                    "Kâr/Zarar (%)": st.column_config.NumberColumn("Kâr/Zarar (%)", format="%+0.2f%%")
+                },
+                use_container_width=True,
+                hide_index=True
+            )
         else:
-            st.sidebar.warning("Hisse bulunamadı.")
+            st.success("✅ Şu an takip edilen açık pozisyon yok.")
+    else:
+        st.info("Kayıt defterinde henüz açık işlem bulunmuyor.")
 
-    # 1. ANA TABLO: SENKRONİZE ŞOK LİDERLERİ
-    st.subheader("🚀 Eşzamanlı Şok Patlama Liderleri (Top 20)")
-    st.markdown("*Günün dinamik piyasa eşiklerini aşan, tüm göstergeleri aynı anda patlamış Day-1 liderleri.*")
-    
-    top_candidates = df[df['shock_score'] > 0.0].sort_values(by='shock_score', ascending=False).head(20)
-    
-    display_cols = ['ticker', 'shock_score', 'score_diff', 'regime', 'shock_count', 'z_vol', 'z_range', 'z_lambda', 'change_%', 'close']
-    display_cols = [c for c in display_cols if c in df.columns]
-    
-    col_names = {
-        'ticker': 'Hisse',
-        'shock_score': 'Şok Skoru',
-        'score_diff': 'İvme Farkı',
-        'regime': 'Şok Rejimi',
-        'shock_count': 'Senkron Gösterge',
-        'z_vol': 'Hacim Şoku (Z)',
-        'z_range': 'Menzil Şoku (Z)',
-        'z_lambda': 'Likidite Şoku (Z)',
-        'change_%': 'Günlük %',
-        'close': 'Fiyat (TL)'
-    }
-    
-    if not top_candidates.empty:
+# TAB 3: BACKTEST DEFTERİ
+with tab3:
+    st.subheader("🧪 Şeffaf BIST Backtest Defteri & Model Karnesi")
+    if not df_ledger.empty:
         st.dataframe(
-            top_candidates[display_cols].rename(columns=col_names),
-            column_config={
-                "Şok Skoru": st.column_config.ProgressColumn("Şok Skoru", min_value=0, max_value=100, format="%.1f"),
-                "Senkron Gösterge": st.column_config.NumberColumn("Senkron Gösterge", format="%d/4"),
-                "Hacim Şoku (Z)": st.column_config.NumberColumn("Hacim Şoku (Z)", format="%+.2fσ"),
-                "Menzil Şoku (Z)": st.column_config.NumberColumn("Menzil Şoku (Z)", format="%+.2fσ"),
-                "Likidite Şoku (Z)": st.column_config.NumberColumn("Likidite Şoku (Z)", format="%+.2fσ"),
-                "Günlük %": st.column_config.NumberColumn("Günlük %", format="%+0.2f%%"),
-                "Fiyat (TL)": st.column_config.NumberColumn("Fiyat (TL)", format="%.2f TL"),
-                "İvme Farkı": st.column_config.NumberColumn("İvme Farkı", format="%+0.1f")
-            },
+            df_ledger.sort_values(by='date', ascending=False),
             use_container_width=True,
             hide_index=True
         )
     else:
-        st.info("ℹ️ Bugün dinamik piyasa eşiklerini aşan bir şok patlaması tespit edilemedi.")
-
-    st.divider()
-
-    # 2. DİSKALİFİYE EDİLENLER: DÜŞEN BIÇAK TUZAKLARI
-    st.subheader("🪤 Düşen Bıçak Tuzakları (Uzak Dur)")
-    st.markdown("*Ağır düşüş trendinde tepki veren sahte şoklar.*")
-    
-    traps = df[df['regime'].str.contains('DÜŞEN BIÇAK|DUMP', na=False)].sort_values(by='change_%', ascending=True).head(15)
-    if not traps.empty:
-        st.dataframe(
-            traps[display_cols].rename(columns=col_names),
-            column_config={
-                "Şok Skoru": st.column_config.NumberColumn("Şok Skoru", format="%.1f"),
-                "Senkron Gösterge": st.column_config.NumberColumn("Senkron Gösterge", format="%d/4"),
-                "Hacim Şoku (Z)": st.column_config.NumberColumn("Hacim Şoku (Z)", format="%+.2fσ"),
-                "Menzil Şoku (Z)": st.column_config.NumberColumn("Menzil Şoku (Z)", format="%+.2fσ"),
-                "Likidite Şoku (Z)": st.column_config.NumberColumn("Likidite Şoku (Z)", format="%+.2fσ"),
-                "Günlük %": st.column_config.NumberColumn("Günlük %", format="%+0.2f%%"),
-                "Fiyat (TL)": st.column_config.NumberColumn("Fiyat (TL)", format="%.2f TL"),
-                "İvme Farkı": st.column_config.NumberColumn("İvme Farkı", format="%+0.1f")
-            },
-            use_container_width=True,
-            hide_index=True
-        )
-
-else:
-    st.info("🕒 Sistem başlatılıyor... Lütfen GitHub Actions üzerinden 'Run workflow' yapınız.")
+        st.info("Kayıt defteri ilk seans açılışında otomatik doldurulacaktır.")
