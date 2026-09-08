@@ -4,6 +4,7 @@ import os
 import requests
 import json
 from datetime import datetime
+import yfinance as yf
 
 from shock_fetcher import fetch_all_data
 from shock_engine import calculate_shock_scores, gecmis_veriyi_yukle, GECMIS_DOSYA
@@ -50,11 +51,38 @@ def send_telegram_message(message):
         except Exception as e:
             print(f"Telegram hatası: {e}")
 
+def check_bist_earnings_risk(ticker):
+    """BIST BİLANÇO KALKANI: Önümüzdeki 5 gün içinde bilanço varsa True döner."""
+    try:
+        t = yf.Ticker(f"{ticker}.IS")
+        cal = t.calendar
+        if cal is None:
+            return False, ""
+        
+        ed = None
+        if isinstance(cal, dict):
+            ed = cal.get('Earnings Date')
+        elif hasattr(cal, 'get'):
+            ed = cal.get('Earnings Date')
+        elif hasattr(cal, 'loc') and 'Earnings Date' in cal.index:
+            ed = cal.loc['Earnings Date'].values
+
+        if ed is not None:
+            if not isinstance(ed, (list, np.ndarray)):
+                ed = [ed]
+            for d in ed:
+                if pd.notna(d):
+                    d_date = d.date() if hasattr(d, 'date') else pd.to_datetime(d).date()
+                    days_diff = (d_date - datetime.now().date()).days
+                    if 0 <= days_diff <= 5:
+                        return True, f"{d_date.strftime('%d.%m')} ({days_diff} Gün Kaldı)"
+    except Exception:
+        pass
+    return False, ""
+
 def generate_exit_signals(df_current):
-    """BIST son 5 günün açık pozisyonlarını denetler: Stop (-%3) ve Kâr Al (+%8.5 Tavan) alarmları üretir."""
     if not os.path.exists(LEDGER_FILE):
         return ""
-
     try:
         df_ledger = pd.read_csv(LEDGER_FILE)
     except:
@@ -82,21 +110,19 @@ def generate_exit_signals(df_current):
         days_held = (bugun - row_date).days
         pnl = ((curr_p - entry_p) / entry_p) * 100.0
 
-        # BIST ÇIKIŞ VE KÂR AL KURALLARI
         if pnl <= -3.0:
-            signals.append(f"🚨 <b>#{ticker} STOP-LOSS (ACİL ÇIKIŞ)!</b>\n  ↳ <i>Giriş: {entry_p:.2f} TL | Güncel: {curr_p:.2f} TL | Zarar: <b>%{pnl:+.2f}</b>\n  🛑 Stop sınırı kırıldı, beklemeden zararı kes ve çık!</i>")
+            signals.append(f"🚨 <b>#{ticker} STOP-LOSS (ACİL ÇIKIŞ)!</b>\n  ↳ <i>Giriş: {entry_p:.2f} TL | Güncel: {curr_p:.2f} TL | Zarar: <b>%{pnl:+.2f}</b>\n  🛑 Stop kırıldı, zararı kes ve çık!</i>")
         elif pnl >= 8.5:
-            signals.append(f"💰 <b>#{ticker} TAVAN KİLİTLEDİ / KÂR AL!</b>\n  ↳ <i>Giriş: {entry_p:.2f} TL | Güncel: {curr_p:.2f} TL | Kâr: <b>%{pnl:+.2f}</b>\n  🎯 Pozisyonun %50'sini sat, kalan stopu maliyete ({entry_p:.2f} TL) çek!</i>")
+            signals.append(f"💰 <b>#{ticker} TAVAN KİLİTLEDİ / KÂR AL!</b>\n  ↳ <i>Giriş: {entry_p:.2f} TL | Güncel: {curr_p:.2f} TL | Kâr: <b>%{pnl:+.2f}</b>\n  🎯 Pozisyonun %50'sini sat, kalanın stopunu maliyete ({entry_p:.2f} TL) çek!</i>")
         elif days_held >= 5:
-            signals.append(f"⏰ <b>#{ticker} 1 HAFTALIK VADE DOLDU</b>\n  ↳ <i>Kapanış: {curr_p:.2f} TL | Net Sonuç: <b>%{pnl:+.2f}</b>\n  ℹ️ 5 günlük taşıma süresi bitti, pozisyonu kapatıp nakde geç.</i>")
+            signals.append(f"⏰ <b>#{ticker} 1 HAFTALIK VADE DOLDU</b>\n  ↳ <i>Kapanış: {curr_p:.2f} TL | Net: <b>%{pnl:+.2f}</b> (Vade bitti, nakde geç)</i>")
         else:
-            signals.append(f"🟢 <b>#{ticker} TAŞIMAYA DEVAM ET</b> ({days_held}. Gün)\n  ↳ <i>Fiyat: {curr_p:.2f} TL | Anlık P/L: <b>%{pnl:+.2f}</b> (Trend Güçlü)</i>")
+            signals.append(f"🟢 <b>#{ticker} TAŞIMAYA DEVAM ET</b> ({days_held}. Gün)\n  ↳ <i>Fiyat: {curr_p:.2f} TL | Durum: <b>%{pnl:+.2f}</b> (Trend Güçlü)</i>")
 
     if not signals:
         return ""
 
-    exit_rep = "🛡️ <b>BIST AÇIK POZİSYONLAR & ÇIKIŞ SİNYALLERİ (Exit Engine):</b>\n"
-    exit_rep += "<i>(Önceki günlerden taşınan açık hisselerin anlık denetimi)</i>\n"
+    exit_rep = "🛡️ <b>BIST AÇIK POZİSYONLAR & ÇIKIŞ ALARMLARI (Exit Engine):</b>\n"
     exit_rep += "━━━━━━━━━━━━━━━━━━━━\n"
     exit_rep += "\n\n".join(signals)
     exit_rep += "\n━━━━━━━━━━━━━━━━━━━━\n\n"
@@ -107,6 +133,9 @@ def record_clean_ledger_entries(df_scored):
     new_rows = []
     candidates = df_scored[df_scored['shock_score'] >= 65.0]
     for _, r in candidates.iterrows():
+        if "BİLANÇO" in r.get('entry_status', ''):
+            continue
+
         new_rows.append({
             "date": bugun_str,
             "ticker": r['ticker'],
@@ -145,12 +174,10 @@ def record_clean_ledger_entries(df_scored):
 def format_shock_report(df_scored, exit_signals_text, min_score=75.0):
     shocks = df_scored[df_scored['shock_score'] >= min_score].sort_values(by='shock_score', ascending=False)
     
-    # 1. BÖLÜM: ÇIKIŞ ALARMLARI (Önce Savunma)
     msg = ""
     if exit_signals_text:
         msg += exit_signals_text
 
-    # 2. BÖLÜM: GÜNÜN YENİ GİRİŞLERİ
     msg += f"⚡ <b>BIST GÜVEN SKORLU ŞOK LİSTESİ ({min_score:.1f}+)</b>\n"
     msg += f"🗓 <i>{datetime.now().strftime('%Y-%m-%d')} | Saat: 10:30 Seans Açılışı</i>\n"
     msg += "━━━━━━━━━━━━━━━━━━━━\n\n"
@@ -170,10 +197,11 @@ def format_shock_report(df_scored, exit_signals_text, min_score=75.0):
     return msg
 
 def main():
-    print(f"[{datetime.now().strftime('%H:%M:%S')}] === BIST Coordinated Shock & Exit Engine Başlıyor ===")
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] === BIST Scanner & Triple Shield Başlıyor ===")
     
     df_current = fetch_all_data()
     if df_current.empty:
+        print("Hata: BIST verisi temin edilemedi.")
         return
 
     update_realized_shock_returns(df_current)
@@ -204,10 +232,22 @@ def main():
     if df_scored.empty:
         return
 
-    # 1. ÇIKIŞ VE STOP SİNYALLERİNİ DENETLE
+    # 1. BİLANÇO KALKANI KONTROLÜ
+    print("🔍 BIST Bilanço takvimi taranıyor...")
+    for idx, row in df_scored.head(15).iterrows():
+        if row['shock_score'] >= 65.0:
+            has_earnings, e_date = check_bist_earnings_risk(row['ticker'])
+            if has_earnings:
+                print(f"⚠️ {row['ticker']} için BIST bilanço riski: {e_date}")
+                df_scored.at[idx, 'entry_status'] = f"🚨 BİLANÇO RİSKİ ({e_date})"
+                df_scored.at[idx, 'allocation'] = "İşlem Açma (%0 - Bilanço Kumarı)"
+                df_scored.at[idx, 'stars'] = "⚠️"
+                df_scored.at[idx, 'shock_score'] = saved_min_score - 1.0
+
+    # 2. Çıkış ve Stop Sinyallerini Hesapla
     exit_signals_text = generate_exit_signals(df_current)
 
-    # 2. YENİ GİRİŞLERİ DEFTERE İŞLE
+    # 3. Temiz Deftere Kaydet
     record_clean_ledger_entries(df_scored)
 
     if not df_gecmis.empty:
@@ -222,10 +262,10 @@ def main():
     df_yeni_gecmis = df_yeni_gecmis[df_yeni_gecmis['tarih'] >= limit_tarih]
     df_yeni_gecmis.to_csv(GECMIS_DOSYA, index=False)
 
-    # 3. MESAJI GÖNDER
+    # 4. Raporu Gönder
     telegram_msg = format_shock_report(df_scored, exit_signals_text, saved_min_score)
     send_telegram_message(telegram_msg)
-    print("BIST Giriş ve Çıkış Raporu başarıyla tamamlandı.")
+    print("BIST Güvenlik Kalkanlı Rapor başarıyla tamamlandı.")
 
 if __name__ == "__main__":
     main()
