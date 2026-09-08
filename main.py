@@ -21,7 +21,6 @@ def send_telegram_message(message):
     token = os.environ.get('TELEGRAM_TOKEN')
     chat_id = os.environ.get('CHAT_ID')
     if not token or not chat_id:
-        print("Telegram kimlik bilgileri eksik.")
         return
 
     url = f"https://api.telegram.org/bot{token}/sendMessage"
@@ -51,12 +50,61 @@ def send_telegram_message(message):
         except Exception as e:
             print(f"Telegram hatası: {e}")
 
+def generate_exit_signals(df_current):
+    """BIST son 5 günün açık pozisyonlarını denetler: Stop (-%3) ve Kâr Al (+%8.5 Tavan) alarmları üretir."""
+    if not os.path.exists(LEDGER_FILE):
+        return ""
+
+    try:
+        df_ledger = pd.read_csv(LEDGER_FILE)
+    except:
+        return ""
+
+    if df_ledger.empty or 'is_completed' not in df_ledger.columns:
+        return ""
+
+    open_positions = df_ledger[df_ledger['is_completed'] == 0]
+    if open_positions.empty:
+        return ""
+
+    close_map = dict(zip(df_current['ticker'], df_current['close']))
+    bugun = datetime.now().date()
+    signals = []
+
+    for idx, row in open_positions.iterrows():
+        ticker = row['ticker']
+        if ticker not in close_map:
+            continue
+
+        curr_p = close_map[ticker]
+        entry_p = float(row['entry_price'])
+        row_date = datetime.strptime(str(row['date']), '%Y-%m-%d').date()
+        days_held = (bugun - row_date).days
+        pnl = ((curr_p - entry_p) / entry_p) * 100.0
+
+        # BIST ÇIKIŞ VE KÂR AL KURALLARI
+        if pnl <= -3.0:
+            signals.append(f"🚨 <b>#{ticker} STOP-LOSS (ACİL ÇIKIŞ)!</b>\n  ↳ <i>Giriş: {entry_p:.2f} TL | Güncel: {curr_p:.2f} TL | Zarar: <b>%{pnl:+.2f}</b>\n  🛑 Stop sınırı kırıldı, beklemeden zararı kes ve çık!</i>")
+        elif pnl >= 8.5:
+            signals.append(f"💰 <b>#{ticker} TAVAN KİLİTLEDİ / KÂR AL!</b>\n  ↳ <i>Giriş: {entry_p:.2f} TL | Güncel: {curr_p:.2f} TL | Kâr: <b>%{pnl:+.2f}</b>\n  🎯 Pozisyonun %50'sini sat, kalan stopu maliyete ({entry_p:.2f} TL) çek!</i>")
+        elif days_held >= 5:
+            signals.append(f"⏰ <b>#{ticker} 1 HAFTALIK VADE DOLDU</b>\n  ↳ <i>Kapanış: {curr_p:.2f} TL | Net Sonuç: <b>%{pnl:+.2f}</b>\n  ℹ️ 5 günlük taşıma süresi bitti, pozisyonu kapatıp nakde geç.</i>")
+        else:
+            signals.append(f"🟢 <b>#{ticker} TAŞIMAYA DEVAM ET</b> ({days_held}. Gün)\n  ↳ <i>Fiyat: {curr_p:.2f} TL | Anlık P/L: <b>%{pnl:+.2f}</b> (Trend Güçlü)</i>")
+
+    if not signals:
+        return ""
+
+    exit_rep = "🛡️ <b>BIST AÇIK POZİSYONLAR & ÇIKIŞ SİNYALLERİ (Exit Engine):</b>\n"
+    exit_rep += "<i>(Önceki günlerden taşınan açık hisselerin anlık denetimi)</i>\n"
+    exit_rep += "━━━━━━━━━━━━━━━━━━━━\n"
+    exit_rep += "\n\n".join(signals)
+    exit_rep += "\n━━━━━━━━━━━━━━━━━━━━\n\n"
+    return exit_rep
+
 def record_clean_ledger_entries(df_scored):
-    """Bugünden itibaren backtest için tertemiz ham veriyi kaydeder."""
     bugun_str = datetime.now().strftime('%Y-%m-%d')
     new_rows = []
-    
-    # 65+ skor alan potansiyel tüm adayları ham skorlarıyla deftere yaz
     candidates = df_scored[df_scored['shock_score'] >= 65.0]
     for _, r in candidates.iterrows():
         new_rows.append({
@@ -67,7 +115,6 @@ def record_clean_ledger_entries(df_scored):
             "z_range": r.get('z_range', 0.0),
             "z_flow": r.get('z_flow', 0.0),
             "z_lambda": r.get('z_lambda', 0.0),
-            "is_above_trend": 1 if r.get('is_above_trend') else 0,
             "entry_status": r.get('entry_status', 'NORMAL'),
             "initial_score": r.get('shock_score', 0.0),
             "price_d1": np.nan,
@@ -86,7 +133,6 @@ def record_clean_ledger_entries(df_scored):
     if os.path.exists(LEDGER_FILE):
         try:
             df_old = pd.read_csv(LEDGER_FILE)
-            # Aynı gün aynı hisseyi tekrar ekleme
             df_old = df_old[~((df_old['date'] == bugun_str) & (df_old['ticker'].isin(df_new['ticker'])))]
             df_final = pd.concat([df_old, df_new], ignore_index=True)
         except:
@@ -95,39 +141,39 @@ def record_clean_ledger_entries(df_scored):
         df_final = df_new
 
     df_final.to_csv(LEDGER_FILE, index=False)
-    print(f"[{datetime.now().strftime('%H:%M:%S')}] Backtest Defterine {len(df_new)} temiz aday kaydedildi.")
 
-def format_shock_report(df_scored, thresholds, weights, ai_status):
-    min_score = thresholds.get('min_score', 75.0)
+def format_shock_report(df_scored, exit_signals_text, min_score=75.0):
     shocks = df_scored[df_scored['shock_score'] >= min_score].sort_values(by='shock_score', ascending=False)
     
-    msg = f"⚡ <b>BIST GÜVEN SKORLU ŞOK LİSTESİ ({min_score:.1f}+)</b>\n"
+    # 1. BÖLÜM: ÇIKIŞ ALARMLARI (Önce Savunma)
+    msg = ""
+    if exit_signals_text:
+        msg += exit_signals_text
+
+    # 2. BÖLÜM: GÜNÜN YENİ GİRİŞLERİ
+    msg += f"⚡ <b>BIST GÜVEN SKORLU ŞOK LİSTESİ ({min_score:.1f}+)</b>\n"
     msg += f"🗓 <i>{datetime.now().strftime('%Y-%m-%d')} | Saat: 10:30 Seans Açılışı</i>\n"
     msg += "━━━━━━━━━━━━━━━━━━━━\n\n"
     
     if shocks.empty:
-        msg += f"ℹ️ <i>Bugün {min_score:.1f} puan ve üzeri kriteri karşılayan hisse bulunamadı.</i>"
+        msg += f"ℹ️ <i>Bugün {min_score:.1f} puan ve üzeri güven kriterini karşılayan hisse bulunamadı.</i>"
         return msg
 
-    for idx, row in shocks.iterrows():
-        trend_icon = "EMA20 Üstü ✅" if row.get('is_above_trend') else "EMA20 Altı ⚠️"
+    for idx, row in shocks.head(15).iterrows():
         msg += f"🚀 <b>#{row['ticker']}</b> ── <b>{row['shock_score']:.1f} Puan</b> ({row['stars']})\n"
         msg += f"• <b>Fiyat:</b> {row['close']:.2f} TL | <b>Değişim:</b> %{row['change_%']:+.2f}\n"
         msg += f"• <b>Giriş Marjı:</b> <i>{row['entry_status']}</i>\n"
-        msg += f"• <b>Trend:</b> <i>{trend_icon}</i>\n"
         msg += f"💰 <b>KASA ÖNERİSİ:</b> <b>{row['allocation']}</b>\n\n"
         
     msg += "━━━━━━━━━━━━━━━━━━━━\n"
-    msg += f"🎯 <i>Toplam {len(shocks)} adet yüksek güvenli hisse tespit edildi.</i>\n\n"
-    msg += "🛑 <b>RİSK KURALI:</b> <i>Stop-Loss seviyesini 10:00 - 10:15 açılış barının en dibine (ORB Low) koyunuz!</i>"
+    msg += f"🎯 <i>Toplam {len(shocks)} adet yüksek güvenli hisse tespit edildi.</i>"
     return msg
 
 def main():
-    print(f"[{datetime.now().strftime('%H:%M:%S')}] === 10:30 Coordinated Shock Scanner Başlıyor ===")
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] === BIST Coordinated Shock & Exit Engine Başlıyor ===")
     
     df_current = fetch_all_data()
     if df_current.empty:
-        print("Hata: Piyasa verisi alınamadı.")
         return
 
     update_realized_shock_returns(df_current)
@@ -156,12 +202,12 @@ def main():
     df_scored = calculate_shock_scores(df_current, df_gecmis, dynamic_thresholds, dynamic_weights)
     
     if df_scored.empty:
-        print("Puanlanmış veri boş döndü.")
         return
 
-    log_shock_signals(df_scored)
-    
-    # YENİ: Temiz Backtest Defterine bugünkü ham verileri kaydet
+    # 1. ÇIKIŞ VE STOP SİNYALLERİNİ DENETLE
+    exit_signals_text = generate_exit_signals(df_current)
+
+    # 2. YENİ GİRİŞLERİ DEFTERE İŞLE
     record_clean_ledger_entries(df_scored)
 
     if not df_gecmis.empty:
@@ -176,9 +222,10 @@ def main():
     df_yeni_gecmis = df_yeni_gecmis[df_yeni_gecmis['tarih'] >= limit_tarih]
     df_yeni_gecmis.to_csv(GECMIS_DOSYA, index=False)
 
-    telegram_msg = format_shock_report(df_scored, dynamic_thresholds, dynamic_weights, ai_status)
+    # 3. MESAJI GÖNDER
+    telegram_msg = format_shock_report(df_scored, exit_signals_text, saved_min_score)
     send_telegram_message(telegram_msg)
-    print(f"[{datetime.now().strftime('%H:%M:%S')}] İşlem tamamlandı.")
+    print("BIST Giriş ve Çıkış Raporu başarıyla tamamlandı.")
 
 if __name__ == "__main__":
     main()
