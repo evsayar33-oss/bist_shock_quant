@@ -15,17 +15,16 @@ from shock_learner import (
     AI_STATE_FILE
 )
 
+LEDGER_FILE = "backtest_ledger.csv"
+
 def send_telegram_message(message):
     token = os.environ.get('TELEGRAM_TOKEN')
     chat_id = os.environ.get('CHAT_ID')
-    
     if not token or not chat_id:
-        print("❌ Hata: Telegram Token veya Chat ID bulunamadı.")
+        print("Telegram kimlik bilgileri eksik.")
         return
 
     url = f"https://api.telegram.org/bot{token}/sendMessage"
-
-    # Telegram 4096 Karakter Koruması: Mesaj uzunsa güvenle parçalara böl
     max_len = 3800
     messages = []
     if len(message) > max_len:
@@ -43,23 +42,60 @@ def send_telegram_message(message):
         messages = [message]
 
     for idx, msg in enumerate(messages):
-        payload = {
-            "chat_id": chat_id,
-            "text": msg,
-            "parse_mode": "HTML",
-            "disable_web_page_preview": True
-        }
+        payload = {"chat_id": chat_id, "text": msg, "parse_mode": "HTML", "disable_web_page_preview": True}
         try:
             res = requests.post(url, json=payload, timeout=15)
-            res_data = res.json()
-            if res_data.get("ok"):
-                print(f"✅ Telegram mesajı başarıyla iletildi (Parça {idx+1}/{len(messages)}).")
-            else:
-                print(f"⚠️ Telegram API Hatası: {res_data.get('description')}. HTML kaldırılıp tekrar deneniyor...")
+            if not res.json().get("ok"):
                 payload.pop("parse_mode")
                 requests.post(url, json=payload, timeout=15)
         except Exception as e:
-            print(f"❌ Telegram bağlantı hatası: {e}")
+            print(f"Telegram hatası: {e}")
+
+def record_clean_ledger_entries(df_scored):
+    """Bugünden itibaren backtest için tertemiz ham veriyi kaydeder."""
+    bugun_str = datetime.now().strftime('%Y-%m-%d')
+    new_rows = []
+    
+    # 65+ skor alan potansiyel tüm adayları ham skorlarıyla deftere yaz
+    candidates = df_scored[df_scored['shock_score'] >= 65.0]
+    for _, r in candidates.iterrows():
+        new_rows.append({
+            "date": bugun_str,
+            "ticker": r['ticker'],
+            "entry_price": r['close'],
+            "z_vol": r.get('z_vol', 0.0),
+            "z_range": r.get('z_range', 0.0),
+            "z_flow": r.get('z_flow', 0.0),
+            "z_lambda": r.get('z_lambda', 0.0),
+            "is_above_trend": 1 if r.get('is_above_trend') else 0,
+            "entry_status": r.get('entry_status', 'NORMAL'),
+            "initial_score": r.get('shock_score', 0.0),
+            "price_d1": np.nan,
+            "price_d3": np.nan,
+            "price_d5": np.nan,
+            "return_d1": np.nan,
+            "return_d3": np.nan,
+            "return_d5": np.nan,
+            "is_completed": 0
+        })
+
+    if not new_rows:
+        return
+
+    df_new = pd.DataFrame(new_rows)
+    if os.path.exists(LEDGER_FILE):
+        try:
+            df_old = pd.read_csv(LEDGER_FILE)
+            # Aynı gün aynı hisseyi tekrar ekleme
+            df_old = df_old[~((df_old['date'] == bugun_str) & (df_old['ticker'].isin(df_new['ticker'])))]
+            df_final = pd.concat([df_old, df_new], ignore_index=True)
+        except:
+            df_final = df_new
+    else:
+        df_final = df_new
+
+    df_final.to_csv(LEDGER_FILE, index=False)
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] Backtest Defterine {len(df_new)} temiz aday kaydedildi.")
 
 def format_shock_report(df_scored, thresholds, weights, ai_status):
     min_score = thresholds.get('min_score', 75.0)
@@ -70,12 +106,11 @@ def format_shock_report(df_scored, thresholds, weights, ai_status):
     msg += "━━━━━━━━━━━━━━━━━━━━\n\n"
     
     if shocks.empty:
-        msg += f"ℹ️ <i>Bugün {min_score:.1f} puan ve üzeri güven kriterini karşılayan hisse bulunamadı.</i>"
+        msg += f"ℹ️ <i>Bugün {min_score:.1f} puan ve üzeri kriteri karşılayan hisse bulunamadı.</i>"
         return msg
 
     for idx, row in shocks.iterrows():
         trend_icon = "EMA20 Üstü ✅" if row.get('is_above_trend') else "EMA20 Altı ⚠️"
-        
         msg += f"🚀 <b>#{row['ticker']}</b> ── <b>{row['shock_score']:.1f} Puan</b> ({row['stars']})\n"
         msg += f"• <b>Fiyat:</b> {row['close']:.2f} TL | <b>Değişim:</b> %{row['change_%']:+.2f}\n"
         msg += f"• <b>Giriş Marjı:</b> <i>{row['entry_status']}</i>\n"
@@ -85,7 +120,6 @@ def format_shock_report(df_scored, thresholds, weights, ai_status):
     msg += "━━━━━━━━━━━━━━━━━━━━\n"
     msg += f"🎯 <i>Toplam {len(shocks)} adet yüksek güvenli hisse tespit edildi.</i>\n\n"
     msg += "🛑 <b>RİSK KURALI:</b> <i>Stop-Loss seviyesini 10:00 - 10:15 açılış barının en dibine (ORB Low) koyunuz!</i>"
-    
     return msg
 
 def main():
@@ -126,6 +160,9 @@ def main():
         return
 
     log_shock_signals(df_scored)
+    
+    # YENİ: Temiz Backtest Defterine bugünkü ham verileri kaydet
+    record_clean_ledger_entries(df_scored)
 
     if not df_gecmis.empty:
         bugun = pd.Timestamp.now().normalize()
@@ -137,12 +174,11 @@ def main():
     df_yeni_gecmis['tarih'] = pd.to_datetime(df_yeni_gecmis['tarih'])
     limit_tarih = pd.Timestamp.now().normalize() - pd.Timedelta(days=30)
     df_yeni_gecmis = df_yeni_gecmis[df_yeni_gecmis['tarih'] >= limit_tarih]
-    
     df_yeni_gecmis.to_csv(GECMIS_DOSYA, index=False)
 
     telegram_msg = format_shock_report(df_scored, dynamic_thresholds, dynamic_weights, ai_status)
     send_telegram_message(telegram_msg)
-    print(f"[{datetime.now().strftime('%H:%M:%S')}] Tarama ve Telegram raporlama süreci tamamlandı.")
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] İşlem tamamlandı.")
 
 if __name__ == "__main__":
     main()
