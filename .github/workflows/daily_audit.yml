@@ -29,9 +29,9 @@ jobs:
           CHAT_ID: ${{ secrets.CHAT_ID }}
         run: python shock_auditor.py
 
-      - name: Yeni Parametreleri Repoya Otomatik Commit Et
+      - name: Yeni Parametreleri ve Defteri Repoya Otomatik Kaydet
         run: |
           git config --global user.name "QuantBot Auto-Learning"
           git config --global user.email "bot@quant.local"
-          git add shock_ai_state.json
-          git diff-index --quiet HEAD || (git commit -m "🤖 Auto-Calibration: Updated AI state from evening audit" && git push)
+          git add shock_ai_state.json backtest_ledger.csv gecmis_veri.csv shock_signals_log.csv
+          git diff-index --quiet HEAD || (git commit -m "🤖 Auto-Calibration: Updated AI state & Backtest Ledger" && git push)
