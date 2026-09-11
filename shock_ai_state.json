@@ -1,9 +1,9 @@
 {
     "thresholds": {
         "th_vol": 0.8,
-        "th_range": 6.0,
-        "th_flow": 2.21,
-        "th_lambda": 1.24,
+        "th_range": 5.49,
+        "th_flow": 1.99,
+        "th_lambda": 1.33,
         "min_score": 78.0
     },
     "weights": {
@@ -12,5 +12,5 @@
         "flow": 0.26,
         "lambda": 0.12
     },
-    "status": "\ud83e\udde0 AI \u00d6Z-\u00d6\u011eRENME AKT\u0130F (E\u011fitilen Sinyal: 45)"
+    "status": "\ud83e\udde0 AI \u00d6Z-\u00d6\u011eRENME AKT\u0130F (E\u011fitilen Sinyal: 54)"
 }
