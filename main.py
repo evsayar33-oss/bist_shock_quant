@@ -190,7 +190,10 @@ def format_shock_report(df_scored, exit_signals_text, min_score=75.0):
         msg += f"🚀 <b>#{row['ticker']}</b> ── <b>{row['shock_score']:.1f} Puan</b> ({row['stars']})\n"
         msg += f"• <b>Fiyat:</b> {row['close']:.2f} TL | <b>Değişim:</b> %{row['change_%']:+.2f}\n"
         msg += f"• <b>Giriş Marjı:</b> <i>{row['entry_status']}</i>\n"
-        msg += f"💰 <b>KASA ÖNERİSİ:</b> <b>{row['allocation']}</b>\n\n"
+        tp_p = row['close'] * 1.09
+        sl_p = row['close'] * 0.975
+        msg += f"• 🎯 <b>Kâr Al (+%9.0):</b> {tp_p:.2f} TL | 🛑 <b>Stop (-%2.5):</b> {sl_p:.2f} TL (5 Gün Vade)\n"
+        msg += f"💰 <b>KELLY PAYI:</b> <b>{row['allocation']}</b>\n\n"
         
     msg += "━━━━━━━━━━━━━━━━━━━━\n"
     msg += f"🎯 <i>Toplam {len(shocks)} adet yüksek güvenli hisse tespit edildi.</i>"
