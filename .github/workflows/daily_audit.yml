@@ -3,7 +3,7 @@ name: BIST Evening Audit & Backtest
 on:
   schedule:
     # Hafta içi her gün TSİ 18:40 (UTC 15:40)
-    - cron: '10 10 * * 1-5'
+    - cron: '40 15 * * 1-5'
   workflow_dispatch:
 
 permissions:
