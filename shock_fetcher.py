@@ -18,7 +18,7 @@ def get_bist_raw_data():
     payload = {
         "filter": [
             {"left": "type", "operation": "equal", "right": "stock"},
-            {"left": "Value.Traded", "operation": "greater", "right": 3500000}
+            {"left": "Value.Traded", "operation": "greater", "right": 8000000}
         ],
         "columns": [
             "name", "close", "open", "high", "low", "volume", "change", "Value.Traded",

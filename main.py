@@ -110,9 +110,9 @@ def generate_exit_signals(df_current):
         days_held = (bugun - row_date).days
         pnl = ((curr_p - entry_p) / entry_p) * 100.0
 
-        if pnl <= -3.0:
+        if pnl <= -2.5:
             signals.append(f"🚨 <b>#{ticker} STOP-LOSS (ACİL ÇIKIŞ)!</b>\n  ↳ <i>Giriş: {entry_p:.2f} TL | Güncel: {curr_p:.2f} TL | Zarar: <b>%{pnl:+.2f}</b>\n  🛑 Stop kırıldı, zararı kes ve çık!</i>")
-        elif pnl >= 8.5:
+        elif pnl >= 9.0:
             signals.append(f"💰 <b>#{ticker} TAVAN KİLİTLEDİ / KÂR AL!</b>\n  ↳ <i>Giriş: {entry_p:.2f} TL | Güncel: {curr_p:.2f} TL | Kâr: <b>%{pnl:+.2f}</b>\n  🎯 Pozisyonun %50'sini sat, kalanın stopunu maliyete ({entry_p:.2f} TL) çek!</i>")
         elif days_held >= 5:
             signals.append(f"⏰ <b>#{ticker} 1 HAFTALIK VADE DOLDU</b>\n  ↳ <i>Kapanış: {curr_p:.2f} TL | Net: <b>%{pnl:+.2f}</b> (Vade bitti, nakde geç)</i>")
