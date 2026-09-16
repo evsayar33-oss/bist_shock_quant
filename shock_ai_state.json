@@ -1,9 +1,9 @@
 {
     "thresholds": {
-        "th_vol": 0.8,
+        "th_vol": 0.94,
         "th_range": 6.0,
         "th_flow": 1.0,
-        "th_lambda": 1.27,
+        "th_lambda": 1.92,
         "min_score": 75.0
     },
     "weights": {
