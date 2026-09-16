@@ -11,7 +11,6 @@ st.set_page_config(
     page_icon="⚡"
 )
 
-# Koyu Tema ve Modern Kartlar
 st.markdown("""
 <style>
     .metric-card {
@@ -37,14 +36,13 @@ def load_ai_state():
             pass
     return {
         "thresholds": {"min_score": 75.0, "th_vol": 1.5, "th_flow": 2.0},
-        "weights": {"vol": 0.30, "flow": 0.25, "range": 0.30, "lambda": 0.15},
-        "status": "AKTİF / OTONOM ÖĞRENME DEVREDE"
+        "weights": {"vol": 0.35, "flow": 0.35, "range": 0.20, "lambda": 0.10},
+        "status": "🛡️ PİYASA ÇÖKÜŞ KALKANLI & HACİM GÜVENLİ MODEL"
     }
 
 def load_data():
     df_scan = pd.DataFrame()
     df_ledger = pd.DataFrame()
-    
     if os.path.exists(GECMIS_DOSYA):
         try:
             df_scan = pd.read_csv(GECMIS_DOSYA)
@@ -68,11 +66,22 @@ th = ai_state.get('thresholds', {})
 w = ai_state.get('weights', {})
 min_score = th.get('min_score', 75.0)
 
-# BAŞLIK
 st.title("⚡ BIST Quant Momentum & Çıkış Terminali")
 st.caption(f"🤖 **Model Durumu:** {ai_state.get('status', 'AKTİF')} | 🎯 **Hedef Baraj:** {min_score:.1f} Puan")
 
-# ÜST METRİK PANELİ
+# Piyasa genişliği ve kırmızı oranı kontrolü
+market_breadth_text = "NÖTR"
+if not df_scan.empty:
+    son_tarih = df_scan['tarih'].max()
+    today_scan = df_scan[df_scan['tarih'] == son_tarih]
+    red_pct = (len(today_scan[today_scan['change_%'] < 0]) / len(today_scan) * 100.0) if len(today_scan) > 0 else 50.0
+    if red_pct >= 70:
+        market_breadth_text = f"🚨 ÇÖKÜŞ REJİMİ (Hisselerin %{red_pct:.0f}'i Düşüşte)"
+    elif red_pct <= 40:
+        market_breadth_text = f"🚀 BOĞA REJİMİ (Yükseliş Hakim)"
+    else:
+        market_breadth_text = f"⚖️ DALGALI REJİM (Kırmızı: %{red_pct:.0f})"
+
 c1, c2, c3, c4 = st.columns(4)
 
 completed_trades = df_ledger[df_ledger['is_completed'] == 1] if not df_ledger.empty and 'is_completed' in df_ledger.columns else pd.DataFrame()
@@ -81,10 +90,10 @@ if not completed_trades.empty and len(completed_trades) > 0:
     wins = completed_trades[completed_trades['return_d5'] > 0]
     win_rate = (len(wins) / len(completed_trades)) * 100.0
 
-c1.metric("🎯 Dinamik Baraj", f"{min_score:.1f} Puan", f"Flow Ağırlığı: %{int(w.get('flow', 0.25)*100)}")
+c1.metric("🎯 Dinamik Baraj", f"{min_score:.1f} Puan", f"Vol/Flow: %{int(w.get('vol', 0.35)*100)} / %{int(w.get('flow', 0.35)*100)}")
 c2.metric("🏆 5G Win Rate", f"%{win_rate:.1f}", f"{len(completed_trades)} Tamamlanmış İşlem")
-c3.metric("🧪 Backtest İlerlemesi", f"{len(completed_trades)} / 25", "25'te Otomatik Grid Search")
-c4.metric("⚡ Hacim Ağırlığı", f"%{int(w.get('vol', 0.30)*100)}", "Sıfır Gecikmeli Mikroyapı")
+c3.metric("🌐 Piyasa Rejimi", market_breadth_text)
+c4.metric("🛡️ Kalkan", "Hacim Vetosu Aktif", "RVOL < 1.25x Yasak")
 
 st.divider()
 
@@ -100,16 +109,14 @@ if search_ticker and not df_scan.empty:
         st.sidebar.metric("Quant Güven Skoru", f"{last_row['shock_score']:.1f}", last_row.get('stars', '⭐⭐⭐⭐'))
         st.sidebar.write(f"**Son Fiyat:** {last_row['close']:.2f} TL ({last_row['change_%']:+.2f}%)")
         st.sidebar.write(f"**Giriş Durumu:** {last_row.get('entry_status', 'NORMAL')}")
+        st.sidebar.write(f"**Göreli Hacim (RVOL):** {last_row.get('rvol', 1.0):.2f}x")
         st.sidebar.write(f"**Alıcı Akış Baskısı:** {last_row.get('z_flow', 0.0):+.2f}σ")
-        st.sidebar.write(f"**Hacim Şoku:** {last_row.get('z_vol', 0.0):+.2f}σ")
         st.sidebar.info(f"💰 {last_row.get('allocation', 'Standart Risk')}")
     else:
         st.sidebar.warning("Hisse son tarama kayıtlarında bulunamadı.")
 
-# SEKMELER
 tab1, tab2, tab3 = st.tabs(["🚀 Günün Giriş Liderleri", "🛡️ Açık Pozisyonlar & Çıkışlar", "🧪 Canlı Backtest Defteri"])
 
-# TAB 1: GÜNÜN GİRİŞLERİ
 with tab1:
     st.subheader("🎯 Bugünün Yüksek Güvenli BIST Şok Girişleri")
     if not df_scan.empty:
@@ -118,17 +125,16 @@ with tab1:
         top_candidates = df_today[df_today['shock_score'] >= min_score].sort_values(by='shock_score', ascending=False)
 
         if not top_candidates.empty:
-            disp_cols = ['ticker', 'shock_score', 'stars', 'close', 'change_%', 'entry_status', 'allocation', 'z_flow', 'z_vol']
+            disp_cols = ['ticker', 'shock_score', 'stars', 'close', 'change_%', 'rvol', 'entry_status', 'allocation']
             col_map = {
                 'ticker': 'Hisse',
                 'shock_score': 'Güven Skoru',
                 'stars': 'Yıldız',
                 'close': 'Fiyat (TL)',
                 'change_%': 'Günlük %',
+                'rvol': 'RVOL (Hacim Çarpanı)',
                 'entry_status': 'Bölge',
-                'allocation': 'Önerilen Kasa',
-                'z_flow': 'Akış (Z)',
-                'z_vol': 'Hacim (Z)'
+                'allocation': 'Önerilen Kasa'
             }
             st.dataframe(
                 top_candidates[disp_cols].rename(columns=col_map),
@@ -136,8 +142,7 @@ with tab1:
                     "Güven Skoru": st.column_config.ProgressColumn("Güven Skoru", min_value=0, max_value=100, format="%.1f"),
                     "Fiyat (TL)": st.column_config.NumberColumn("Fiyat (TL)", format="%.2f TL"),
                     "Günlük %": st.column_config.NumberColumn("Günlük %", format="%+0.2f%%"),
-                    "Akış (Z)": st.column_config.NumberColumn("Akış (Z)", format="%+.2fσ"),
-                    "Hacim (Z)": st.column_config.NumberColumn("Hacim (Z)", format="%+.2fσ"),
+                    "RVOL (Hacim Çarpanı)": st.column_config.NumberColumn("Hacim Çarpanı", format="%.2fx"),
                 },
                 use_container_width=True,
                 hide_index=True
@@ -147,10 +152,9 @@ with tab1:
     else:
         st.info("Henüz tarama verisi bulunmuyor.")
 
-# TAB 2: AÇIK POZİSYONLAR & ÇIKIŞ / STOP MOTORU
 with tab2:
     st.subheader("🛡️ Açık Pozisyonlar & Çıkış / Kâr Al Motoru")
-    st.markdown("*Son 5 gün içinde girilmiş BIST işlemlerinin canlı kâr/zarar ve stop durumu.*")
+    st.markdown("*Kademeli kâr koruma, maliyet stopu ve dinamik çıkış alarmları.*")
 
     if not df_ledger.empty and 'is_completed' in df_ledger.columns:
         open_pos = df_ledger[df_ledger['is_completed'] == 0].copy()
@@ -171,9 +175,11 @@ with tab2:
 
                 action = "🟢 TAŞIMAYA DEVAM ET"
                 if pnl <= -3.0:
-                    action = "🚨 STOP-LOSS / ÇIKIŞ YAP"
-                elif pnl >= 8.5:
+                    action = "🚨 STOP-LOSS / ACİL ÇIKIŞ"
+                elif pnl >= 9.0:
                     action = "💰 TAVAN KİLİTLEDİ (Yarısını Sat)"
+                elif pnl >= 4.0:
+                    action = "🔒 STOP MALİYETE ÇEKİLDİ (Risksiz)"
 
                 pos_cards.append({
                     "Hisse": tk,
@@ -198,7 +204,6 @@ with tab2:
     else:
         st.info("Kayıt defterinde henüz açık işlem bulunmuyor.")
 
-# TAB 3: BACKTEST DEFTERİ
 with tab3:
     st.subheader("🧪 Şeffaf BIST Backtest Defteri & Model Karnesi")
     if not df_ledger.empty:
@@ -208,4 +213,4 @@ with tab3:
             hide_index=True
         )
     else:
-        st.info("Kayıt defteri ilk seans açılışında otomatik doldurulacaktır.")
+        st.info("Kayıt defteri henüz boş.")
