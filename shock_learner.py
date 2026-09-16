@@ -7,7 +7,8 @@ from scipy.stats import spearmanr
 SIGNAL_LOG_FILE = "shock_signals_log.csv"
 AI_STATE_FILE = "shock_ai_state.json"
 
-DEFAULT_WEIGHTS = {"vol": 0.30, "range": 0.30, "flow": 0.25, "lambda": 0.15}
+# HACİM VE AKIŞ BASKIN AĞIRLIKLAR: Hacimsiz hisse şok olamaz!
+DEFAULT_WEIGHTS = {"vol": 0.35, "flow": 0.35, "range": 0.20, "lambda": 0.10}
 
 def load_signal_history():
     if os.path.exists(SIGNAL_LOG_FILE):
@@ -61,32 +62,29 @@ def update_realized_shock_returns(current_market_df):
     return history_df
 
 def compute_dynamic_market_thresholds(df):
-    """SABİT EŞİKLERİ YOK EDEN FONKSİYON: O günkü piyasanın en uç %10'luk dilimini otomatik eşik yapar."""
     if df.empty:
         return {"th_vol": 1.5, "th_range": 1.5, "th_flow": 2.0, "th_lambda": 1.2}
     
-    # 85. Persentil: O günkü piyasaya göre dinamik şok barajı
     th_vol = float(np.percentile(df['z_vol'], 85)) if 'z_vol' in df.columns else 1.5
     th_range = float(np.percentile(df['z_range'], 85)) if 'z_range' in df.columns else 1.5
     th_flow = float(np.percentile(df['z_flow'], 85)) if 'z_flow' in df.columns else 2.0
     th_lambda = float(np.percentile(df['z_lambda'], 85)) if 'z_lambda' in df.columns else 1.2
     
     return {
-        "th_vol": round(max(th_vol, 0.8), 2),
-        "th_range": round(max(th_range, 0.8), 2),
-        "th_flow": round(max(th_flow, 1.0), 2),
+        "th_vol": round(max(th_vol, 1.2), 2),
+        "th_range": round(max(th_range, 1.0), 2),
+        "th_flow": round(max(th_flow, 1.5), 2),
         "th_lambda": round(max(th_lambda, 0.5), 2)
     }
 
 def calibrate_adaptive_weights():
-    """ÖZ-ÖĞRENME: Geçmiş şokların getirisinden ağırlıkları optimize eder."""
     history_df = load_signal_history()
     valid = history_df.dropna(subset=['realized_3d']) if not history_df.empty else pd.DataFrame()
     
     if len(valid) < 15:
         return DEFAULT_WEIGHTS, "🕒 ÖĞRENME EVRESİNDE (Örneklem Bekleniyor)"
     
-    factors = ['z_vol', 'z_range', 'z_flow', 'z_lambda']
+    factors = ['z_vol', 'z_flow', 'z_range', 'z_lambda']
     ic_scores = {}
     y = valid['realized_3d'].values
     
@@ -101,13 +99,13 @@ def calibrate_adaptive_weights():
     total = sum(ic_scores.values())
     raw_weights = {
         "vol": ic_scores['z_vol'] / total,
-        "range": ic_scores['z_range'] / total,
         "flow": ic_scores['z_flow'] / total,
+        "range": ic_scores['z_range'] / total,
         "lambda": ic_scores['z_lambda'] / total
     }
     
-    # Bayesian Shrinkage (Aşırı dalgalanmayı engeller)
-    final_w = {k: round(0.50 * DEFAULT_WEIGHTS[k] + 0.50 * raw_weights[k], 2) for k in DEFAULT_WEIGHTS}
+    # Bayesian Shrinkage
+    final_w = {k: round(0.60 * DEFAULT_WEIGHTS[k] + 0.40 * raw_weights[k], 2) for k in DEFAULT_WEIGHTS}
     w_sum = sum(final_w.values())
     final_w = {k: round(v / w_sum, 2) for k, v in final_w.items()}
     
