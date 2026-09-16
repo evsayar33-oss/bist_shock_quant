@@ -1,16 +1,16 @@
 {
     "thresholds": {
-        "th_vol": 0.94,
-        "th_range": 6.0,
-        "th_flow": 1.0,
-        "th_lambda": 1.92,
+        "th_vol": 1.5,
+        "th_range": 1.5,
+        "th_flow": 2.0,
+        "th_lambda": 1.2,
         "min_score": 75.0
     },
     "weights": {
-        "vol": 0.2,
-        "range": 0.2,
-        "flow": 0.45,
-        "lambda": 0.15
+        "vol": 0.35,
+        "flow": 0.35,
+        "range": 0.20,
+        "lambda": 0.10
     },
-    "status": "\ud83e\udde0 AI \u00d6Z-\u00d6\u011eRENME AKT\u0130F (E\u011fitilen Sinyal: 59)"
+    "status": "🛡️ PİYASA ÇÖKÜŞ KALKANLI & HACİM GÜVENLİ MODEL"
 }
