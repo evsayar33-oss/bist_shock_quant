@@ -17,14 +17,15 @@ def gecmis_veriyi_yukle():
             return pd.DataFrame()
     return pd.DataFrame()
 
-def calculate_shock_scores(df, df_gecmis, dynamic_thresholds=None, dynamic_weights=None):
+def calculate_shock_scores(df, df_gecmis, dynamic_thresholds=None, dynamic_weights=None, market_is_crashing=False):
     if df.empty: 
         return df
 
     if dynamic_thresholds is None:
         dynamic_thresholds = {"th_vol": 1.5, "th_range": 1.5, "th_flow": 2.0, "th_lambda": 1.2}
+    # Hacim ve Akış baskın ağırlıklar (Hacimsiz şok olamaz!)
     if dynamic_weights is None:
-        dynamic_weights = {"vol": 0.30, "range": 0.30, "flow": 0.25, "lambda": 0.15}
+        dynamic_weights = {"vol": 0.35, "flow": 0.35, "range": 0.20, "lambda": 0.10}
 
     scored_data = []
 
@@ -54,7 +55,8 @@ def calculate_shock_scores(df, df_gecmis, dynamic_thresholds=None, dynamic_weigh
         safe_atr = max(atr, 0.01)
         z_range = round(min(max(float(((today_range / safe_atr) - 1.0) * 2.5), -2.0), 6.0), 2)
 
-        liquidity_damping = min(value_traded / 12000000.0, 1.0) if value_traded > 0 else 0.0
+        # Likidite sönümlemesi: Minimum 25 Milyon TL işlem görmeyen sığ tahtalara kısıtlama
+        liquidity_damping = min(value_traded / 25000000.0, 1.0) if value_traded > 0 else 0.0
         raw_lambda = ((abs(change) / ((value_traded / 10000000.0) + 1e-9)) * liquidity_damping) if value_traded > 0 else 0.0
         z_lambda = round(min(float(np.log1p(raw_lambda) * 2.0), 5.0), 2)
 
@@ -67,16 +69,21 @@ def calculate_shock_scores(df, df_gecmis, dynamic_thresholds=None, dynamic_weigh
         aggressor_flow = (max(clv, 0.0) * 0.55) + (max(body_eff, 0.0) * 0.45)
         z_flow = round(float(aggressor_flow * 4.0), 2)
 
-        # 3. GİRİŞ MARJI (BIST SWEET SPOT: +%2.0 ile +%5.2 arası)
-        entry_bonus = 0.0
-        if 2.0 <= change <= 5.2:
+        # 3. GİRİŞ MARJI & TAVAN FİLTRESİ
+        if 2.0 <= change <= 5.5:
             entry_bonus = 6.0
             entry_status = "🎯 İDEAL GİRİŞ BÖLGESİ"
-        elif change >= 7.5:
-            entry_bonus = -8.0
+        elif change > 6.5:
+            entry_bonus = -25.0  # Tavan kovalayanlara ağır ceza
             entry_status = "⚠️ GEÇ KALINDI (Tepeden Alım Riski)"
         else:
+            entry_bonus = 0.0
             entry_status = "NORMAL GİRİŞ"
+
+        # 4. HACİM VETOSU (Volume Veto)
+        # RVOL 1.25'in altındaysa veya z_vol < 0 ise hacimsiz sahte yükseliştir!
+        is_volume_fake = (rvol < 1.25) or (z_vol < 0.2)
+        is_illiquid = (value_traded < 25000000.0)
 
         shock_count = 0
         if z_vol >= dynamic_thresholds.get('th_vol', 1.5): shock_count += 1
@@ -99,6 +106,8 @@ def calculate_shock_scores(df, df_gecmis, dynamic_thresholds=None, dynamic_weigh
         item['is_fresh_shock'] = is_fresh_shock
         item['is_downtrend_knife'] = is_downtrend_knife
         item['is_below_vwap'] = is_below_vwap
+        item['is_volume_fake'] = is_volume_fake
+        item['is_illiquid'] = is_illiquid
         scored_data.append(item)
 
     res_df = pd.DataFrame(scored_data)
@@ -110,19 +119,30 @@ def calculate_shock_scores(df, df_gecmis, dynamic_thresholds=None, dynamic_weigh
     res_df['pct_lambda'] = res_df['z_lambda'].rank(pct=True) * 100.0
     res_df['pct_flow'] = res_df['z_flow'].rank(pct=True) * 100.0
 
-    w_v = dynamic_weights.get('vol', 0.30)
-    w_r = dynamic_weights.get('range', 0.30)
-    w_f = dynamic_weights.get('flow', 0.25)
-    w_l = dynamic_weights.get('lambda', 0.15)
+    w_v = dynamic_weights.get('vol', 0.35)
+    w_f = dynamic_weights.get('flow', 0.35)
+    w_r = dynamic_weights.get('range', 0.20)
+    w_l = dynamic_weights.get('lambda', 0.10)
 
     base_score = (
         res_df['pct_vol'] * w_v +
-        res_df['pct_range'] * w_r +
         res_df['pct_flow'] * w_f +
+        res_df['pct_range'] * w_r +
         res_df['pct_lambda'] * w_l
     ) * (res_df['concordance_mult'] / 1.5)
 
     raw_confidence = base_score + res_df['entry_bonus']
+
+    # FİLTRE VE VETO KURALLARI
+    # 1. Hacimsiz drift hisselerinin puanını buda (maksimum 45 puan)
+    raw_confidence = np.where(res_df['is_volume_fake'], np.minimum(raw_confidence, 45.0), raw_confidence)
+    # 2. Sığ tahtalar (25M TL altı) maks 50 puan alabilir
+    raw_confidence = np.where(res_df['is_illiquid'], np.minimum(raw_confidence, 50.0), raw_confidence)
+    # 3. Piyasa çöküş rejimindeyse sadece süper-dirençli hisseler puan alabilir (RVOL >= 2.5 ve Değişim <= 5.5)
+    if market_is_crashing:
+        super_resilient = (res_df['rvol'] >= 2.5) & (res_df['change_%'] >= 2.0) & (res_df['change_%'] <= 6.0) & (~res_df['is_illiquid'])
+        raw_confidence = np.where(super_resilient, raw_confidence, np.minimum(raw_confidence, 40.0))
+
     final_score = np.clip(np.round(raw_confidence, 1), 0.0, 99.5)
 
     res_df['shock_score'] = np.where(
@@ -136,28 +156,22 @@ def calculate_shock_scores(df, df_gecmis, dynamic_thresholds=None, dynamic_weigh
     def assign_allocation(row):
         score = row['shock_score']
         chg = row['change_%']
-        if score >= 85.0 and chg <= 6.5:
-            return "⭐⭐⭐⭐⭐", "Portföyün %15 - %20'si (Yüksek Güven)"
-        elif score >= 75.0:
+        rvol_val = row.get('rvol', 1.0)
+        
+        if score >= 85.0 and chg <= 5.5 and rvol_val >= 2.0:
+            return "⭐⭐⭐⭐⭐", "Portföyün %15 - %20'si (Kurumsal Şok Güveni)"
+        elif score >= 75.0 and chg <= 6.0:
             return "⭐⭐⭐⭐", "Portföyün %8 - %12'si (Dengeli Güven)"
         elif score >= 65.0:
-            return "⭐⭐⭐", "Portföyün %3 - %5'i (Deneme / Küçük Kasa)"
+            return "⭐⭐⭐", "Portföyün %3 - %5'i (Küçük Kasa Deneme)"
         else:
-            return "⭐", "İşlem Açma (Yetersiz Güven)"
+            return "⭐", "İşlem Açma (Yetersiz Güven / Hacimsiz)"
 
     stars_alloc = [assign_allocation(r) for _, r in res_df.iterrows()]
     res_df['stars'] = [sa[0] for sa in stars_alloc]
     res_df['allocation'] = [sa[1] for sa in stars_alloc]
 
-    drop_cols = ['pct_vol', 'pct_range', 'pct_lambda', 'pct_flow', 'concordance_mult', 'is_downtrend_knife', 'is_below_vwap', 'entry_bonus']
+    drop_cols = ['pct_vol', 'pct_range', 'pct_lambda', 'pct_flow', 'concordance_mult', 'is_downtrend_knife', 'is_below_vwap', 'entry_bonus', 'is_volume_fake', 'is_illiquid']
     res_df = res_df.drop(columns=[col for col in drop_cols if col in res_df.columns])
 
     return res_df.sort_values(by='shock_score', ascending=False).reset_index(drop=True)
-
-def calculate_dynamic_kelly_allocation(shock_score: float, base_alloc: float = 8.5) -> float:
-    """Calculates Quarter-to-Third Fractional Kelly allocation based on shock score."""
-    if shock_score < 75.0:
-        return 0.0
-    scale = (shock_score / 75.0) ** 1.5
-    alloc = round(min(max(base_alloc * scale, 8.0), 16.0), 1)
-    return alloc
