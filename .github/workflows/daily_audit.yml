@@ -1,38 +1,42 @@
 name: BIST Evening Audit & Backtest
 
 on:
-schedule:
-# Hafta içi her gün TSİ 17:45 (UTC 14:45)
-- cron: '45 14 * * 1-5'
-workflow_dispatch:
+  schedule:
+    # Hafta içi her gün TSİ 17:45 (UTC 14:45)
+    - cron: '45 14 * * 1-5'
+  workflow_dispatch:
+
+concurrency:
+  group: bist-meta-audit
+  cancel-in-progress: false
 
 permissions:
-contents: write
+  contents: write
 
 jobs:
-audit:
-runs-on: ubuntu-latest
-steps:
-- name: Repoyu Klonla
-uses: actions/checkout@v4
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Repoyu Klonla
+        uses: actions/checkout@v4
 
-  - name: Python Kurulumu
-    uses: actions/setup-python@v5
-    with:
-      python-version: '3.10'
+      - name: Python Kurulumu
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
 
-  - name: Paketleri Yukle
-    run: pip install -r requirements.txt
+      - name: Paketleri Yukle
+        run: pip install -r requirements.txt
 
-  - name: Kapanis Denetimini Calistir
-    env:
-      TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
-      CHAT_ID: ${{ secrets.CHAT_ID }}
-    run: python shock_auditor.py
+      - name: Kapanis Denetimini Calistir
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          CHAT_ID: ${{ secrets.CHAT_ID }}
+        run: python shock_auditor.py
 
-  - name: Sonuclari ve Yeni Parametreleri Kaydet
-    run: |
-      git config --global user.name "QuantBot-BIST"
-      git config --global user.email "bot@bist.local"
-      git add -A
-      git diff-index --quiet HEAD || (git commit -m "🏆 Auto-Calibration: BIST AI State & Ledger" && git push)
+      - name: Sonuclari ve Yeni Parametreleri Kaydet
+        run: |
+          git config --global user.name "QuantBot-BIST"
+          git config --global user.email "bot@bist.local"
+          git add -A
+          git diff-index --quiet HEAD || (git commit -m "🏆 Auto-Calibration: BIST AI State & Ledger" && git push)
