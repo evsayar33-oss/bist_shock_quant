@@ -65,7 +65,7 @@ def get_bist_yfinance_fallback():
     """TradingView çöktüğünde devreye giren BIST 2. Hat (Failover Motoru)."""
     print("⚠️ UYARI: TradingView BIST yanıt vermedi! 2. Hat (yfinance BIST) devreye giriyor...")
     try:
-        data = yf.download(BIST_BACKUP_WATCHLIST, period="15d", interval="1d", group_by='ticker', progress=False)
+        data = yf.download(BIST_BACKUP_WATCHLIST, period="120d", interval="1d", group_by='ticker', progress=False)
         rows = []
         for full_t in BIST_BACKUP_WATCHLIST:
             try:
@@ -89,6 +89,11 @@ def get_bist_yfinance_fallback():
                 avg_vol_10 = df_t['Volume'].tail(10).mean()
                 rvol = (vol / avg_vol_10) if avg_vol_10 > 0 else 1.0
                 atr = (df_t['High'] - df_t['Low']).tail(14).mean()
+
+                # Yedek veri hattında 1A/3A performansı mümkün olduğunca gerçek
+                # geçmiş kapanışlardan hesaplanır; veri yetersizse nötr kalır.
+                perf_1m = ((close / float(df_t['Close'].iloc[-22]) - 1.0) * 100.0) if len(df_t) >= 22 else 0.0
+                perf_3m = ((close / float(df_t['Close'].iloc[-64]) - 1.0) * 100.0) if len(df_t) >= 64 else 0.0
                 vwap = (high + low + close) / 3.0
                 
                 rows.append({
@@ -96,7 +101,7 @@ def get_bist_yfinance_fallback():
                     "close": close, "open": open_p, "high": high, "low": low,
                     "volume": vol, "change_%": round(change, 2),
                     "value_traded": value_traded, "rvol": round(rvol, 2),
-                    "atr": round(atr, 2), "perf_1m": 0.0, "perf_3m": 0.0,
+                    "atr": round(atr, 2), "perf_1m": round(perf_1m, 2), "perf_3m": round(perf_3m, 2),
                     "volatility": 2.0, "vwap": vwap
                 })
             except Exception:
