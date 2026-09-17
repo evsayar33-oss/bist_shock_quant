@@ -1,16 +1,18 @@
 {
     "thresholds": {
-        "th_vol": 1.2,
+        "th_vol": 1.99,
         "th_range": 6.0,
-        "th_flow": 2.56,
-        "th_lambda": 1.64,
+        "th_flow": 2.84,
+        "th_lambda": 1.53,
         "min_score": 75.0
     },
     "weights": {
         "vol": 0.35,
         "flow": 0.35,
         "range": 0.2,
-        "lambda": 0.1
+        "lambda": 0.1,
+        "resilience_weight": 0.7
     },
-    "status": "\ud83e\udde0 AI \u00d6Z-\u00d6\u011eRENME AKT\u0130F (E\u011fitilen Sinyal: 59)"
+    "resilience_weight": 0.7,
+    "status": "🧠 AI ÖZ-ÖĞRENME AKTİF (Eğitilen Sinyal: 59) | 🛡️ RESILIENCE AĞIRLIĞI: VARSAYILAN"
 }
