@@ -2,8 +2,8 @@
     "thresholds": {
         "th_vol": 1.2,
         "th_range": 6.0,
-        "th_flow": 1.67,
-        "th_lambda": 2.28,
+        "th_flow": 1.5,
+        "th_lambda": 2.35,
         "min_score": 75.0
     },
     "weights": {
@@ -12,7 +12,7 @@
         "range": 0.14,
         "lambda": 0.07
     },
-    "status": "🧠 META ENGINE | CRASH | Güven %98 | 🧠 LEGACY FACTOR LEARNING (N=59) | 🛡️ RESILIENCE AĞIRLIĞI: VARSAYILAN",
+    "status": "🧠 META ENGINE | CRASH | Güven %98 | 🧠 LEGACY FACTOR LEARNING (N=59) | 🛡️ RESILIENCE AĞIRLIĞI: ÖRNEKLEM BEKLENİYOR (0/25)",
     "resilience_weight": 0.7,
     "meta_engine": {
         "version": 1,
