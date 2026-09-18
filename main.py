@@ -18,8 +18,10 @@ from shock_learner import (
     load_ai_state,
     save_ai_state,
     log_shock_signals,
+    load_signal_history,
     AI_STATE_FILE,
 )
+from autonomy_guard import evaluate_autonomy_guard
 
 LEDGER_FILE = "backtest_ledger.csv"
 
@@ -192,7 +194,6 @@ def generate_exit_signals(df_current):
 
 
 def record_clean_ledger_entries(df_scored, market_is_crashing=False):
-    """Write only high-quality active candidates to the production ledger."""
     if df_scored is None or df_scored.empty:
         return
 
@@ -372,19 +373,15 @@ def main():
     market_is_crashing, regime_status_text, market_snapshot = assess_bist_market_regime(df_current)
     print(f"Piyasa Durumu: {regime_status_text}")
 
-    # Önceki sinyallerin gerçekleşen sonuçlarını güncelle.
     update_realized_shock_returns(df_current)
 
     state = load_ai_state()
 
-    # Legacy factor weights geriye dönük uyumluluk için korunuyor.
     legacy_weights, legacy_status = calibrate_adaptive_weights()
     resilience_weight, resilience_status = calibrate_resilience_weight()
 
-    # Canlı rejime göre runtime meta profilini oluştur.
     runtime_profile = build_runtime_meta_profile(market_snapshot, state)
 
-    # Dinamik event eşikleri güncel cross-section'tan alınır.
     df_temp = calculate_shock_scores(
         df_current,
         pd.DataFrame(),
@@ -396,7 +393,6 @@ def main():
     )
     dynamic_thresholds = compute_dynamic_market_thresholds(df_temp)
 
-    # State içindeki öğrenilmiş legacy ağırlıkları ezmeden güncelle.
     state["thresholds"] = {**state.get("thresholds", {}), **dynamic_thresholds}
     state["weights"] = {**state.get("weights", {}), **legacy_weights}
     state["resilience_weight"] = resilience_weight
@@ -424,7 +420,31 @@ def main():
     if df_scored.empty:
         return
 
-    # Shadow profil varsa aynı gün aynı veride bağımsız skor üretilir; bu sinyal üretmez.
+    guard_log = load_signal_history()
+    guard_result = evaluate_autonomy_guard(
+        state,
+        features=df_scored,
+        regime=market_snapshot,
+        regime_confidence=float(market_snapshot.get("confidence", 0.0)),
+        performance_returns=(guard_log["realized_3d"] if "realized_3d" in guard_log.columns else None),
+        data_quality_score=100.0,
+        row_count=len(df_current),
+        min_rows=100,
+        project="bist_shock",
+    )
+    if "effective_min_score" in df_scored.columns:
+        base_effective = pd.to_numeric(
+            df_scored["effective_min_score"], errors="coerce"
+        ).fillna(float(runtime_profile.get("min_score", 75.0)))
+    else:
+        base_effective = pd.Series(
+            float(runtime_profile.get("min_score", 75.0)), index=df_scored.index, dtype=float
+        )
+    df_scored["effective_min_score"] = base_effective + float(guard_result.get("signal_threshold_add", 0.0))
+    if guard_result.get("block_new_entries"):
+        df_scored["effective_min_score"] = 101.0
+    save_ai_state(state)
+
     shadow_df = pd.DataFrame()
     shadow_profile = state.get("meta_engine", {}).get("shadow", {}).get("profile")
     if isinstance(shadow_profile, dict) and shadow_profile.get("weights"):
@@ -441,7 +461,6 @@ def main():
             meta_profile=shadow_runtime,
         )
 
-    # Öğrenme veri akışının kritik parçası: her taramada aktif/shadow adaylar kayıt edilir.
     log_shock_signals(
         df_scored.head(10),
         regime_snapshot=market_snapshot,
@@ -462,7 +481,6 @@ def main():
     exit_signals_text = generate_exit_signals(df_current)
     record_clean_ledger_entries(df_scored, market_is_crashing=market_is_crashing)
 
-    # Geçmişi 30 günle sınırlamak yerine daha uzun bir öğrenme penceresi tutuyoruz.
     if not df_gecmis.empty and "tarih" in df_gecmis.columns:
         bugun = pd.Timestamp.now().normalize()
         df_gecmis = df_gecmis[df_gecmis["tarih"] != bugun]

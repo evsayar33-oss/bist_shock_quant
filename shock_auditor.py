@@ -18,7 +18,9 @@ from shock_learner import (
     prepare_historical_frame,
     save_ai_state,
     split_training_validation,
+    load_signal_history,
 )
+from autonomy_guard import evaluate_autonomy_guard
 
 MIN_ADAPTIVE_TRAIN_ROWS = 150
 MIN_ADAPTIVE_VALIDATION_SAMPLES = 20
@@ -312,7 +314,6 @@ def run_adaptive_meta_audit(current_df, state):
         }
         decision_note = "SHADOW KORUNDU | Validation örneklemi yetersiz"
 
-    # Aktif profil ciddi bozulduysa son stable profile'a kontrollü geri dönüş.
     current_active = profiles.get(regime, active)
     current_metrics = evaluate_profile(validation, current_active, min_samples=10, target="future_ret_3d")
     if not promoted and _rollback_needed(current_metrics) and regime in stable:
@@ -361,9 +362,21 @@ def run_evening_audit():
     legacy_best = run_threshold_audit(completed) if len(completed) >= 15 else None
 
     state = load_ai_state()
+    signal_hist = load_signal_history()
+    current_snapshot = classify_bist_regime(df_close)
+    evaluate_autonomy_guard(
+        state,
+        features=None,
+        regime=current_snapshot,
+        regime_confidence=float(current_snapshot.get("confidence", 0.0)),
+        performance_returns=(signal_hist["realized_3d"] if "realized_3d" in signal_hist.columns else None),
+        data_quality_score=100.0,
+        row_count=len(df_close),
+        min_rows=100,
+        project="bist_shock",
+    )
     state, meta_report = run_adaptive_meta_audit(df_close, state)
 
-    # Legacy threshold audit yalnızca raporlanır; artık Adaptive Meta profile'ı ezemez.
     state.setdefault("legacy_audit", {})
     if legacy_best is not None:
         state["legacy_audit"] = {
@@ -381,6 +394,8 @@ def run_evening_audit():
     rep += f"🗓 <i>{datetime.now().strftime('%Y-%m-%d %H:%M')} | Kapanış</i>\n"
     rep += "━━━━━━━━━━━━━━━━━━━━\n\n"
     rep += f"🌐 <b>Rejim:</b> {meta_report.get('regime', 'NORMAL')}\n"
+    guard_view = state.get("autonomy_guard", {})
+    rep += f"🛡️ <b>Otonomi:</b> {guard_view.get('mode', 'NORMAL')} | x{guard_view.get('exposure_multiplier', 1.0):.2f} | {guard_view.get('reason', '')}\n"
     rep += f"🧪 <b>Karar:</b> {meta_report.get('status', 'WAIT')}\n"
     rep += f"• {meta_report.get('decision', meta_report.get('message', ''))}\n\n"
 
