@@ -2,8 +2,8 @@
     "thresholds": {
         "th_vol": 1.2,
         "th_range": 6.0,
-        "th_flow": 1.5,
-        "th_lambda": 2.35,
+        "th_flow": 2.23,
+        "th_lambda": 1.81,
         "min_score": 75.0
     },
     "weights": {
@@ -12,7 +12,7 @@
         "range": 0.14,
         "lambda": 0.07
     },
-    "status": "🧠 META ENGINE AUDIT | CRASH | Active PF 0.00 | Shadow PF 0.00 | SHADOW KORUNDU | Validation örneklemi yetersiz",
+    "status": "🧠 META ENGINE | CRASH | Güven %98 | 🧠 LEGACY FACTOR LEARNING (N=59) | 🛡️ RESILIENCE AĞIRLIĞI: ÖRNEKLEM BEKLENİYOR (0/25)",
     "resilience_weight": 0.7,
     "meta_engine": {
         "version": 1,
@@ -111,5 +111,140 @@
         "win_rate": 30.0,
         "profit_factor": 0.6220404362862464,
         "avg_return": -1.8943333333333332
+    },
+    "autonomy_guard": {
+        "version": "1.0.0",
+        "mode": "NORMAL",
+        "exposure_multiplier": 1.0,
+        "signal_threshold_add": 0.0,
+        "block_new_entries": false,
+        "drift_score": 0.0,
+        "performance_drift": 0.0,
+        "ops_score": 100.0,
+        "regime_stress": 0.0,
+        "risk_score": 0.0,
+        "watch_streak": 0,
+        "safe_streak": 0,
+        "recovery_streak": 0,
+        "healthy_streak": 1,
+        "last_transition": null,
+        "last_evaluation": "2026-09-21T14:28:19.576341+00:00",
+        "reason": "HEALTHY",
+        "recent_regimes": [
+            "CRASH"
+        ],
+        "feature_baseline": {
+            "shock_score": {
+                "n": 450,
+                "mean": 17.495556,
+                "std": 32.793626,
+                "median": 0.0,
+                "q25": 0.0,
+                "q75": 0.0,
+                "mad": 0.0
+            },
+            "non_price_score": {
+                "n": 450,
+                "mean": 50.109333,
+                "std": 15.187871,
+                "median": 51.1,
+                "q25": 39.7,
+                "q75": 60.7,
+                "mad": 10.7
+            },
+            "flow_score": {
+                "n": 450,
+                "mean": 50.115111,
+                "std": 28.560215,
+                "median": 49.9,
+                "q25": 13.9,
+                "q75": 75.0,
+                "mad": 27.65
+            },
+            "activity_score": {
+                "n": 450,
+                "mean": 50.112444,
+                "std": 28.866233,
+                "median": 50.15,
+                "q25": 25.15,
+                "q75": 75.125,
+                "mad": 25.05
+            },
+            "liquidity_score": {
+                "n": 450,
+                "mean": 50.111111,
+                "std": 28.867685,
+                "median": 50.1,
+                "q25": 25.15,
+                "q75": 75.05,
+                "mad": 25.0
+            },
+            "resilience_score": {
+                "n": 450,
+                "mean": 51.374889,
+                "std": 21.879236,
+                "median": 51.0,
+                "q25": 34.525,
+                "q75": 70.675,
+                "mad": 17.6
+            },
+            "overnight_risk": {
+                "n": 450,
+                "mean": 49.986444,
+                "std": 14.274997,
+                "median": 49.6,
+                "q25": 38.45,
+                "q75": 60.675,
+                "mad": 11.15
+            },
+            "z_vol": {
+                "n": 450,
+                "mean": 0.054889,
+                "std": 1.251437,
+                "median": -0.155,
+                "q25": -0.6775,
+                "q75": 0.5675,
+                "mad": 0.575
+            },
+            "z_flow": {
+                "n": 450,
+                "mean": 1.0132,
+                "std": 1.012152,
+                "median": 0.745,
+                "q25": 0.0,
+                "q75": 1.71,
+                "mad": 0.745
+            },
+            "z_range": {
+                "n": 450,
+                "mean": 1.522311,
+                "std": 3.211671,
+                "median": 0.4,
+                "q25": -1.5225,
+                "q75": 5.9625,
+                "mad": 2.38
+            }
+        },
+        "stress_test": {
+            "passed": true,
+            "version": "1.0.0",
+            "timestamp": "2026-09-21T14:28:19.570067+00:00",
+            "cases": 7,
+            "passed_cases": 7
+        },
+        "performance_detail": {
+            "samples": 59,
+            "recent_n": 20,
+            "baseline_n": 19,
+            "recent_mean": 3.077,
+            "baseline_mean": 0.32,
+            "recent_win_rate": 55.0,
+            "baseline_win_rate": 47.37
+        }
+    },
+    "autonomy": {
+        "version": "1.0.0",
+        "last_mode": "NORMAL",
+        "last_reason": "HEALTHY"
     }
 }
