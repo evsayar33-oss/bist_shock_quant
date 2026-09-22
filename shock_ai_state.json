@@ -1,9 +1,9 @@
 {
     "thresholds": {
-        "th_vol": 1.2,
+        "th_vol": 1.28,
         "th_range": 6.0,
-        "th_flow": 2.23,
-        "th_lambda": 1.81,
+        "th_flow": 2.17,
+        "th_lambda": 1.8,
         "min_score": 75.0
     },
     "weights": {
@@ -118,60 +118,61 @@
         "exposure_multiplier": 1.0,
         "signal_threshold_add": 0.0,
         "block_new_entries": false,
-        "drift_score": 0.0,
+        "drift_score": 0.0428,
         "performance_drift": 0.0,
         "ops_score": 100.0,
         "regime_stress": 0.0,
-        "risk_score": 0.0,
+        "risk_score": 0.0428,
         "watch_streak": 0,
         "safe_streak": 0,
         "recovery_streak": 0,
-        "healthy_streak": 1,
+        "healthy_streak": 2,
         "last_transition": null,
-        "last_evaluation": "2026-09-21T14:28:19.576341+00:00",
+        "last_evaluation": "2026-09-22T05:17:08.090834+00:00",
         "reason": "HEALTHY",
         "recent_regimes": [
+            "CRASH",
             "CRASH"
         ],
         "feature_baseline": {
             "shock_score": {
-                "n": 450,
-                "mean": 17.495556,
-                "std": 32.793626,
+                "n": 900,
+                "mean": 17.475212,
+                "std": 32.796253,
                 "median": 0.0,
                 "q25": 0.0,
                 "q75": 0.0,
                 "mad": 0.0
             },
             "non_price_score": {
-                "n": 450,
-                "mean": 50.109333,
-                "std": 15.187871,
-                "median": 51.1,
-                "q25": 39.7,
-                "q75": 60.7,
-                "mad": 10.7
+                "n": 900,
+                "mean": 50.109477,
+                "std": 15.179187,
+                "median": 51.0625,
+                "q25": 39.675,
+                "q75": 60.70375,
+                "mad": 10.71
             },
             "flow_score": {
-                "n": 450,
-                "mean": 50.115111,
-                "std": 28.560215,
-                "median": 49.9,
-                "q25": 13.9,
-                "q75": 75.0,
-                "mad": 27.65
+                "n": 900,
+                "mean": 50.114055,
+                "std": 28.54044,
+                "median": 49.905,
+                "q25": 14.125,
+                "q75": 75.0025,
+                "mad": 27.8475
             },
             "activity_score": {
-                "n": 450,
-                "mean": 50.112444,
-                "std": 28.866233,
+                "n": 900,
+                "mean": 50.112455,
+                "std": 28.866244,
                 "median": 50.15,
-                "q25": 25.15,
-                "q75": 75.125,
-                "mad": 25.05
+                "q25": 25.1525,
+                "q75": 75.12125,
+                "mad": 25.0475
             },
             "liquidity_score": {
-                "n": 450,
+                "n": 900,
                 "mean": 50.111111,
                 "std": 28.867685,
                 "median": 50.1,
@@ -180,55 +181,55 @@
                 "mad": 25.0
             },
             "resilience_score": {
-                "n": 450,
-                "mean": 51.374889,
-                "std": 21.879236,
-                "median": 51.0,
-                "q25": 34.525,
-                "q75": 70.675,
-                "mad": 17.6
+                "n": 900,
+                "mean": 51.348856,
+                "std": 21.895665,
+                "median": 50.9175,
+                "q25": 34.4725,
+                "q75": 70.68125,
+                "mad": 17.61
             },
             "overnight_risk": {
-                "n": 450,
-                "mean": 49.986444,
-                "std": 14.274997,
-                "median": 49.6,
-                "q25": 38.45,
-                "q75": 60.675,
-                "mad": 11.15
+                "n": 900,
+                "mean": 49.986611,
+                "std": 14.268891,
+                "median": 49.67,
+                "q25": 38.45875,
+                "q75": 60.65,
+                "mad": 11.135
             },
             "z_vol": {
-                "n": 450,
-                "mean": 0.054889,
-                "std": 1.251437,
-                "median": -0.155,
-                "q25": -0.6775,
-                "q75": 0.5675,
-                "mad": 0.575
+                "n": 900,
+                "mean": 0.066302,
+                "std": 1.251253,
+                "median": -0.14275,
+                "q25": -0.6655,
+                "q75": 0.5805,
+                "mad": 0.57875
             },
             "z_flow": {
-                "n": 450,
-                "mean": 1.0132,
-                "std": 1.012152,
-                "median": 0.745,
+                "n": 900,
+                "mean": 1.007119,
+                "std": 1.013723,
+                "median": 0.73275,
                 "q25": 0.0,
-                "q75": 1.71,
-                "mad": 0.745
+                "q75": 1.700875,
+                "mad": 0.73275
             },
             "z_range": {
-                "n": 450,
-                "mean": 1.522311,
-                "std": 3.211671,
-                "median": 0.4,
-                "q25": -1.5225,
-                "q75": 5.9625,
-                "mad": 2.38
+                "n": 900,
+                "mean": 1.525327,
+                "std": 3.212196,
+                "median": 0.4045,
+                "q25": -1.521375,
+                "q75": 5.964375,
+                "mad": 2.3855
             }
         },
         "stress_test": {
             "passed": true,
             "version": "1.0.0",
-            "timestamp": "2026-09-21T14:28:19.570067+00:00",
+            "timestamp": "2026-09-22T05:17:08.082068+00:00",
             "cases": 7,
             "passed_cases": 7
         },
