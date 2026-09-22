@@ -3,7 +3,7 @@ name: BIST Morning Scan & Exit Engine
 on:
   schedule:
     # Hafta içi her gün 10:35 Türkiye saati
-    - cron: '35 3 * * 1-5'
+    - cron: '40 5 * * 1-5'
       timezone: 'Europe/Istanbul'
   workflow_dispatch:
 
