@@ -21,6 +21,7 @@ from shock_learner import (
     load_signal_history,
 )
 from autonomy_guard import evaluate_autonomy_guard
+from win_rate_optimizer import optimize_win_rate, summary as winrate_optimizer_summary
 
 MIN_ADAPTIVE_TRAIN_ROWS = 150
 MIN_ADAPTIVE_VALIDATION_SAMPLES = 20
@@ -363,6 +364,11 @@ def run_evening_audit():
 
     state = load_ai_state()
     signal_hist = load_signal_history()
+    state = optimize_win_rate(
+        state, signal_hist,
+        current_threshold=float(state.get("win_rate_optimizer", {}).get("active_threshold", state.get("meta_engine", {}).get("last_runtime", {}).get("min_score", 75.0))),
+    )
+    state.setdefault("meta_engine", {})["winrate_optimizer_status"] = winrate_optimizer_summary(state)
     current_snapshot = classify_bist_regime(df_close)
     evaluate_autonomy_guard(
         state,

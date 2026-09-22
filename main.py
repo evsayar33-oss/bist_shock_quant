@@ -381,6 +381,8 @@ def main():
     resilience_weight, resilience_status = calibrate_resilience_weight()
 
     runtime_profile = build_runtime_meta_profile(market_snapshot, state)
+    wr_threshold = float(state.get("win_rate_optimizer", {}).get("active_threshold", runtime_profile.get("min_score", 75.0)))
+    runtime_profile["min_score"] = max(float(runtime_profile.get("min_score", 75.0)), wr_threshold)
 
     df_temp = calculate_shock_scores(
         df_current,
