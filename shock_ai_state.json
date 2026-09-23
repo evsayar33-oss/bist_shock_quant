@@ -1,9 +1,9 @@
 {
     "thresholds": {
-        "th_vol": 1.28,
+        "th_vol": 1.2,
         "th_range": 6.0,
-        "th_flow": 2.17,
-        "th_lambda": 1.8,
+        "th_flow": 3.2,
+        "th_lambda": 1.44,
         "min_score": 75.0
     },
     "weights": {
@@ -12,7 +12,7 @@
         "range": 0.14,
         "lambda": 0.07
     },
-    "status": "🧠 META ENGINE AUDIT | ROTATION | Active PF 0.00 | Shadow PF 0.00 | SHADOW KORUNDU | Validation örneklemi yetersiz",
+    "status": "🧠 META ENGINE | EXPANSION | Güven %77 | 🧠 LEGACY FACTOR LEARNING (N=69) | 🛡️ RESILIENCE AĞIRLIĞI: ÖRNEKLEM BEKLENİYOR (9/25)",
     "resilience_weight": 0.7,
     "meta_engine": {
         "version": 1,
@@ -89,14 +89,14 @@
         },
         "last_runtime": {
             "version": 1,
-            "regime": "CRASH",
-            "confidence": 0.98,
+            "regime": "EXPANSION",
+            "confidence": 0.769,
             "weights": {
-                "event": 0.14,
-                "flow": 0.24,
-                "activity": 0.14,
-                "liquidity": 0.12,
-                "resilience": 0.36
+                "event": 0.18,
+                "flow": 0.31,
+                "activity": 0.23,
+                "liquidity": 0.15,
+                "resilience": 0.13
             },
             "min_score": 88.0,
             "source": "REGIME_PROFILE+LIVE_REGIME_BLEND"
@@ -119,22 +119,23 @@
         "exposure_multiplier": 1.0,
         "signal_threshold_add": 0.0,
         "block_new_entries": false,
-        "drift_score": 0.0,
-        "performance_drift": 0.0,
+        "drift_score": 0.5307,
+        "performance_drift": 0.0828,
         "ops_score": 100.0,
-        "regime_stress": 0.25,
-        "risk_score": 0.25,
-        "watch_streak": 0,
+        "regime_stress": 0.8,
+        "risk_score": 0.8,
+        "watch_streak": 1,
         "safe_streak": 0,
         "recovery_streak": 0,
         "healthy_streak": 3,
         "last_transition": null,
-        "last_evaluation": "2026-09-22T15:08:57.036509+00:00",
-        "reason": "HEALTHY",
+        "last_evaluation": "2026-09-23T07:58:32.415058+00:00",
+        "reason": "WATCH_STRESS+FEATURE_DRIFT+REGIME_TRANSITION_STRESS",
         "recent_regimes": [
             "CRASH",
             "CRASH",
-            "ROTATION"
+            "ROTATION",
+            "EXPANSION"
         ],
         "feature_baseline": {
             "shock_score": {
@@ -147,58 +148,58 @@
                 "mad": 0.0
             },
             "non_price_score": {
-                "n": 900,
-                "mean": 50.109477,
-                "std": 15.179187,
-                "median": 51.0625,
-                "q25": 39.675,
-                "q75": 60.70375,
-                "mad": 10.71
+                "n": 1168,
+                "mean": 50.113331,
+                "std": 15.306508,
+                "median": 50.989375,
+                "q25": 39.52625,
+                "q75": 60.808563,
+                "mad": 10.8245
             },
             "flow_score": {
-                "n": 900,
-                "mean": 50.114055,
-                "std": 28.54044,
-                "median": 49.905,
-                "q25": 14.125,
-                "q75": 75.0025,
-                "mad": 27.8475
+                "n": 1168,
+                "mean": 50.117401,
+                "std": 28.549983,
+                "median": 49.91975,
+                "q25": 14.67875,
+                "q75": 75.012375,
+                "mad": 27.705125
             },
             "activity_score": {
-                "n": 900,
-                "mean": 50.112455,
-                "std": 28.866244,
-                "median": 50.15,
-                "q25": 25.1525,
-                "q75": 75.12125,
-                "mad": 25.0475
+                "n": 1168,
+                "mean": 50.116217,
+                "std": 28.864859,
+                "median": 50.155,
+                "q25": 25.142375,
+                "q75": 75.120188,
+                "mad": 25.055125
             },
             "liquidity_score": {
-                "n": 900,
-                "mean": 50.111111,
-                "std": 28.867685,
-                "median": 50.1,
-                "q25": 25.15,
-                "q75": 75.05,
+                "n": 1168,
+                "mean": 50.114884,
+                "std": 28.867664,
+                "median": 50.105,
+                "q25": 25.1575,
+                "q75": 75.0525,
                 "mad": 25.0
             },
             "resilience_score": {
-                "n": 900,
-                "mean": 51.348856,
-                "std": 21.895665,
-                "median": 50.9175,
-                "q25": 34.4725,
-                "q75": 70.68125,
-                "mad": 17.61
+                "n": 1168,
+                "mean": 51.363465,
+                "std": 21.805959,
+                "median": 51.021625,
+                "q25": 34.533875,
+                "q75": 70.405938,
+                "mad": 17.4445
             },
             "overnight_risk": {
-                "n": 900,
-                "mean": 49.986611,
-                "std": 14.268891,
-                "median": 49.67,
-                "q25": 38.45875,
-                "q75": 60.65,
-                "mad": 11.135
+                "n": 1168,
+                "mean": 49.98631,
+                "std": 14.13327,
+                "median": 49.694,
+                "q25": 38.649563,
+                "q75": 60.55875,
+                "mad": 11.00575
             },
             "z_vol": {
                 "n": 900,
@@ -210,45 +211,45 @@
                 "mad": 0.57875
             },
             "z_flow": {
-                "n": 900,
-                "mean": 1.007119,
-                "std": 1.013723,
-                "median": 0.73275,
-                "q25": 0.0,
-                "q75": 1.700875,
-                "mad": 0.73275
+                "n": 1168,
+                "mean": 1.038591,
+                "std": 1.026908,
+                "median": 0.777613,
+                "q25": 0.022,
+                "q75": 1.752331,
+                "mad": 0.752862
             },
             "z_range": {
-                "n": 900,
-                "mean": 1.525327,
-                "std": 3.212196,
-                "median": 0.4045,
-                "q25": -1.521375,
-                "q75": 5.964375,
-                "mad": 2.3855
+                "n": 1168,
+                "mean": 1.474299,
+                "std": 3.197229,
+                "median": 0.341275,
+                "q25": -1.545306,
+                "q75": 5.786031,
+                "mad": 2.323225
             }
         },
         "stress_test": {
             "passed": true,
             "version": "1.0.0",
-            "timestamp": "2026-09-22T15:08:57.036048+00:00",
+            "timestamp": "2026-09-23T07:58:32.406341+00:00",
             "cases": 7,
             "passed_cases": 7
         },
         "performance_detail": {
-            "samples": 59,
+            "samples": 69,
             "recent_n": 20,
-            "baseline_n": 19,
-            "recent_mean": 3.077,
-            "baseline_mean": 0.32,
-            "recent_win_rate": 55.0,
-            "baseline_win_rate": 47.37
+            "baseline_n": 29,
+            "recent_mean": 1.6285,
+            "baseline_mean": 1.4993,
+            "recent_win_rate": 50.0,
+            "baseline_win_rate": 55.17
         }
     },
     "autonomy": {
         "version": "1.0.0",
         "last_mode": "NORMAL",
-        "last_reason": "HEALTHY"
+        "last_reason": "WATCH_STRESS+FEATURE_DRIFT+REGIME_TRANSITION_STRESS"
     },
     "win_rate_optimizer": {
         "version": "1.0.0",
