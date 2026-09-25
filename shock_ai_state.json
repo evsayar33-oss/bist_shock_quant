@@ -1,19 +1,19 @@
 {
     "thresholds": {
         "th_vol": 1.2,
-        "th_range": 6.0,
-        "th_flow": 2.33,
-        "th_lambda": 1.33,
+        "th_range": 5.9,
+        "th_flow": 2.46,
+        "th_lambda": 1.29,
         "min_score": 75.0
     },
     "weights": {
-        "vol": 0.5095,
-        "flow": 0.2805,
+        "vol": 0.4682,
+        "flow": 0.3218,
         "range": 0.14,
         "lambda": 0.07
     },
-    "status": "🧠 META ENGINE AUDIT | CRASH | Active PF 0.00 | Shadow PF 0.00 | SHADOW KORUNDU | Validation örneklemi yetersiz",
-    "resilience_weight": 0.7,
+    "status": "🧠 META ENGINE | EXPANSION | Güven %72 | 🧠 LEGACY FACTOR LEARNING (N=97) | 🛡️ RESILIENCE AĞIRLIĞI: 0.682 (Spearman +0.021)",
+    "resilience_weight": 0.682,
     "meta_engine": {
         "version": 1,
         "regime_profiles": {},
@@ -89,14 +89,14 @@
         },
         "last_runtime": {
             "version": 1,
-            "regime": "ROTATION",
-            "confidence": 0.904,
+            "regime": "EXPANSION",
+            "confidence": 0.718,
             "weights": {
-                "event": 0.16,
-                "flow": 0.28,
-                "activity": 0.18,
+                "event": 0.18,
+                "flow": 0.31,
+                "activity": 0.23,
                 "liquidity": 0.15,
-                "resilience": 0.23
+                "resilience": 0.13
             },
             "min_score": 88.0,
             "source": "REGIME_PROFILE+LIVE_REGIME_BLEND"
@@ -119,18 +119,18 @@
         "exposure_multiplier": 0.6,
         "signal_threshold_add": 5.0,
         "block_new_entries": false,
-        "drift_score": 0.0,
-        "performance_drift": 0.0,
+        "drift_score": 0.49,
+        "performance_drift": 0.2,
         "ops_score": 100.0,
-        "regime_stress": 0.55,
-        "risk_score": 0.55,
-        "watch_streak": 2,
+        "regime_stress": 0.8,
+        "risk_score": 0.8,
+        "watch_streak": 3,
         "safe_streak": 0,
         "recovery_streak": 0,
         "healthy_streak": 3,
         "last_transition": "2026-09-24T07:49:33.275347+00:00",
-        "last_evaluation": "2026-09-24T15:29:01.330323+00:00",
-        "reason": "HEALTHY",
+        "last_evaluation": "2026-09-25T08:11:20.140087+00:00",
+        "reason": "WATCH_STRESS+FEATURE_DRIFT+REGIME_TRANSITION_STRESS",
         "recent_regimes": [
             "CRASH",
             "CRASH",
@@ -138,7 +138,8 @@
             "EXPANSION",
             "ROTATION",
             "ROTATION",
-            "CRASH"
+            "CRASH",
+            "EXPANSION"
         ],
         "feature_baseline": {
             "shock_score": {
@@ -151,58 +152,58 @@
                 "mad": 0.0
             },
             "non_price_score": {
-                "n": 1395,
-                "mean": 50.118722,
-                "std": 15.344336,
-                "median": 50.949906,
-                "q25": 39.407438,
-                "q75": 60.885635,
-                "mad": 10.918275
+                "n": 1648,
+                "mean": 50.122549,
+                "std": 15.438913,
+                "median": 50.822411,
+                "q25": 39.332066,
+                "q75": 60.936353,
+                "mad": 10.967361
             },
             "flow_score": {
-                "n": 1395,
-                "mean": 50.122963,
-                "std": 28.524281,
-                "median": 49.913762,
-                "q25": 14.914813,
-                "q75": 75.011756,
-                "mad": 27.839869
+                "n": 1648,
+                "mean": 50.126815,
+                "std": 28.512668,
+                "median": 49.908074,
+                "q25": 15.029072,
+                "q75": 75.006168,
+                "mad": 28.077876
             },
             "activity_score": {
-                "n": 1395,
-                "mean": 50.121529,
-                "std": 28.84535,
-                "median": 50.14725,
-                "q25": 24.997756,
-                "q75": 75.119179,
-                "mad": 25.142369
+                "n": 1648,
+                "mean": 50.125374,
+                "std": 28.844235,
+                "median": 50.139888,
+                "q25": 24.982868,
+                "q75": 75.11322,
+                "mad": 25.150251
             },
             "liquidity_score": {
-                "n": 1395,
-                "mean": 50.120153,
-                "std": 28.867662,
-                "median": 50.10975,
-                "q25": 25.167125,
-                "q75": 75.054875,
-                "mad": 25.005
+                "n": 1648,
+                "mean": 50.124027,
+                "std": 28.867619,
+                "median": 50.114262,
+                "q25": 25.173769,
+                "q75": 75.057131,
+                "mad": 24.99975
             },
             "resilience_score": {
-                "n": 1395,
-                "mean": 51.305688,
-                "std": 21.710122,
-                "median": 51.065544,
-                "q25": 34.509681,
-                "q75": 70.180641,
-                "mad": 17.352275
+                "n": 1648,
+                "mean": 51.231925,
+                "std": 21.546421,
+                "median": 50.907267,
+                "q25": 34.519197,
+                "q75": 69.906609,
+                "mad": 17.184661
             },
             "overnight_risk": {
-                "n": 1395,
-                "mean": 49.986025,
-                "std": 14.008729,
-                "median": 49.6793,
-                "q25": 38.792085,
-                "q75": 60.428313,
-                "mad": 10.875462
+                "n": 1648,
+                "mean": 49.985657,
+                "std": 13.792418,
+                "median": 49.675335,
+                "q25": 39.057481,
+                "q75": 60.221897,
+                "mad": 10.646689
             },
             "z_vol": {
                 "n": 900,
@@ -214,45 +215,45 @@
                 "mad": 0.57875
             },
             "z_flow": {
-                "n": 1395,
-                "mean": 1.035659,
-                "std": 1.032207,
-                "median": 0.761232,
-                "q25": 0.0209,
-                "q75": 1.759964,
-                "mad": 0.737719
+                "n": 1648,
+                "mean": 1.03368,
+                "std": 1.035305,
+                "median": 0.75517,
+                "q25": 0.019855,
+                "q75": 1.755966,
+                "mad": 0.732833
             },
             "z_range": {
-                "n": 1395,
-                "mean": 1.43019,
-                "std": 3.181986,
-                "median": 0.296711,
-                "q25": -1.560541,
-                "q75": 5.604229,
-                "mad": 2.279564
+                "n": 1648,
+                "mean": 1.378762,
+                "std": 3.165417,
+                "median": 0.234375,
+                "q25": -1.580014,
+                "q75": 5.411518,
+                "mad": 2.218086
             }
         },
         "stress_test": {
             "passed": true,
             "version": "1.0.0",
-            "timestamp": "2026-09-24T15:29:01.329368+00:00",
+            "timestamp": "2026-09-25T08:11:20.131617+00:00",
             "cases": 7,
             "passed_cases": 7
         },
         "performance_detail": {
-            "samples": 80,
+            "samples": 97,
             "recent_n": 20,
             "baseline_n": 40,
-            "recent_mean": 4.26,
-            "baseline_mean": 1.834,
-            "recent_win_rate": 75.0,
-            "baseline_win_rate": 52.5
+            "recent_mean": 4.0585,
+            "baseline_mean": 3.192,
+            "recent_win_rate": 50.0,
+            "baseline_win_rate": 62.5
         }
     },
     "autonomy": {
         "version": "1.0.0",
         "last_mode": "WATCH",
-        "last_reason": "HEALTHY"
+        "last_reason": "WATCH_STRESS+FEATURE_DRIFT+REGIME_TRANSITION_STRESS"
     },
     "win_rate_optimizer": {
         "version": "1.0.0",
