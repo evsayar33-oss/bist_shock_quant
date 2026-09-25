@@ -12,7 +12,7 @@
         "range": 0.14,
         "lambda": 0.07
     },
-    "status": "🧠 META ENGINE | EXPANSION | Güven %72 | 🧠 LEGACY FACTOR LEARNING (N=97) | 🛡️ RESILIENCE AĞIRLIĞI: 0.682 (Spearman +0.021)",
+    "status": "🧠 META ENGINE AUDIT | EXPANSION | Active PF 1.41 | Shadow PF 1.41 | SHADOW KORUNDU | Validation örneklemi yetersiz",
     "resilience_weight": 0.682,
     "meta_engine": {
         "version": 1,
@@ -21,71 +21,71 @@
         "shadow": {
             "profile": {
                 "weights": {
-                    "event": 0.1124,
-                    "flow": 0.2502,
-                    "activity": 0.1124,
-                    "liquidity": 0.187,
-                    "resilience": 0.3379
+                    "event": 0.1331,
+                    "flow": 0.2176,
+                    "activity": 0.1656,
+                    "liquidity": 0.3831,
+                    "resilience": 0.1006
                 },
-                "min_score": 88.0,
+                "min_score": 74.0,
                 "version": 1,
-                "regime": "CRASH"
+                "regime": "EXPANSION"
             },
-            "created_at": "2026-09-24 15:29:01",
-            "regime": "CRASH",
+            "created_at": "2026-09-25 15:31:03",
+            "regime": "EXPANSION",
             "validation": {
-                "n": 6,
-                "win_rate": 66.66666666666666,
-                "profit_factor": 0.0,
-                "avg_return": -1.1653108749006342,
-                "p10": -7.396186188371667,
-                "median": 0.848166127292338,
-                "score": -999.0
+                "n": 16,
+                "win_rate": 62.5,
+                "profit_factor": 1.4121753949005542,
+                "avg_return": 1.0145783878323156,
+                "p10": -3.769269037891576,
+                "median": 2.3896894055654316,
+                "score": 1.3573153346852251
             },
             "decision": "Örneklem bekleniyor"
         },
         "last_validation": {
-            "date": "2026-09-24",
-            "regime": "CRASH",
-            "regime_confidence": 0.98,
+            "date": "2026-09-25",
+            "regime": "EXPANSION",
+            "regime_confidence": 0.742,
             "validation_days": 6,
             "active": {
-                "n": 6,
-                "win_rate": 66.66666666666666,
-                "profit_factor": 0.0,
-                "avg_return": -1.1653108749006342,
-                "p10": -7.396186188371667,
-                "median": 0.848166127292338,
-                "score": -999.0
+                "n": 16,
+                "win_rate": 62.5,
+                "profit_factor": 1.4121753949005542,
+                "avg_return": 1.0145783878323156,
+                "p10": -3.769269037891576,
+                "median": 2.3896894055654316,
+                "score": 1.3573153346852251
             },
             "candidate": {
-                "n": 6,
-                "win_rate": 66.66666666666666,
-                "profit_factor": 0.0,
-                "avg_return": -1.1653108749006342,
-                "p10": -7.396186188371667,
-                "median": 0.848166127292338,
-                "score": -999.0
+                "n": 16,
+                "win_rate": 62.5,
+                "profit_factor": 1.4121753949005542,
+                "avg_return": 1.0145783878323156,
+                "p10": -3.769269037891576,
+                "median": 2.3896894055654316,
+                "score": 1.3573153346852251
             },
             "candidate_profile": {
                 "weights": {
-                    "event": 0.1124,
-                    "flow": 0.2502,
-                    "activity": 0.1124,
-                    "liquidity": 0.187,
-                    "resilience": 0.3379
+                    "event": 0.1331,
+                    "flow": 0.2176,
+                    "activity": 0.1656,
+                    "liquidity": 0.3831,
+                    "resilience": 0.1006
                 },
-                "min_score": 88.0,
+                "min_score": 74.0,
                 "version": 1,
-                "regime": "CRASH"
+                "regime": "EXPANSION"
             }
         },
         "last_decision": {
-            "regime": "CRASH",
+            "regime": "EXPANSION",
             "promoted": false,
             "rollback": false,
             "note": "SHADOW KORUNDU | Validation örneklemi yetersiz",
-            "timestamp": "2026-09-24 15:29:01"
+            "timestamp": "2026-09-25 15:31:03"
         },
         "last_runtime": {
             "version": 1,
@@ -103,34 +103,34 @@
         },
         "promotion_count": 0,
         "rollback_count": 0,
-        "winrate_optimizer_status": "WARMUP | threshold=88.0 | OOS WR=0.00% | LCB=0.00% | N=0"
+        "winrate_optimizer_status": "NO_VALID_FOLDS | threshold=88.0 | OOS WR=33.33% | LCB=17.21% | N=9"
     },
     "legacy_audit": {
-        "date": "2026-09-24",
+        "date": "2026-09-25",
         "min_score": 84.0,
-        "n": 73,
-        "win_rate": 20.54794520547945,
-        "profit_factor": 0.2019104586931974,
-        "avg_return": -7.164657534246575
+        "n": 80,
+        "win_rate": 22.5,
+        "profit_factor": 0.22968340672203338,
+        "avg_return": -6.910124999999999
     },
     "autonomy_guard": {
         "version": "1.0.0",
-        "mode": "WATCH",
-        "exposure_multiplier": 0.6,
-        "signal_threshold_add": 5.0,
+        "mode": "NORMAL",
+        "exposure_multiplier": 1.0,
+        "signal_threshold_add": 0.0,
         "block_new_entries": false,
-        "drift_score": 0.49,
+        "drift_score": 0.0,
         "performance_drift": 0.2,
         "ops_score": 100.0,
-        "regime_stress": 0.8,
-        "risk_score": 0.8,
+        "regime_stress": 0.3,
+        "risk_score": 0.3,
         "watch_streak": 3,
         "safe_streak": 0,
         "recovery_streak": 0,
-        "healthy_streak": 3,
-        "last_transition": "2026-09-24T07:49:33.275347+00:00",
-        "last_evaluation": "2026-09-25T08:11:20.140087+00:00",
-        "reason": "WATCH_STRESS+FEATURE_DRIFT+REGIME_TRANSITION_STRESS",
+        "healthy_streak": 4,
+        "last_transition": "2026-09-25T15:31:02.728721+00:00",
+        "last_evaluation": "2026-09-25T15:31:02.728721+00:00",
+        "reason": "HEALTHY",
         "recent_regimes": [
             "CRASH",
             "CRASH",
@@ -139,6 +139,7 @@
             "ROTATION",
             "ROTATION",
             "CRASH",
+            "EXPANSION",
             "EXPANSION"
         ],
         "feature_baseline": {
@@ -236,7 +237,7 @@
         "stress_test": {
             "passed": true,
             "version": "1.0.0",
-            "timestamp": "2026-09-25T08:11:20.131617+00:00",
+            "timestamp": "2026-09-25T15:31:02.727740+00:00",
             "cases": 7,
             "passed_cases": 7
         },
@@ -252,8 +253,8 @@
     },
     "autonomy": {
         "version": "1.0.0",
-        "last_mode": "WATCH",
-        "last_reason": "WATCH_STRESS+FEATURE_DRIFT+REGIME_TRANSITION_STRESS"
+        "last_mode": "NORMAL",
+        "last_reason": "HEALTHY"
     },
     "win_rate_optimizer": {
         "version": "1.0.0",
@@ -262,16 +263,16 @@
         "return_col": "realized_5d",
         "outcome_col": "meta_selection",
         "baseline_threshold": 88.0,
-        "last_run": "2026-09-24T15:29:01.327171Z",
-        "status": "WARMUP",
+        "last_run": "2026-09-25T15:31:02.724805Z",
+        "status": "NO_VALID_FOLDS",
         "active_threshold": 88.0,
         "active_oos": {
-            "n": 0,
-            "wins": 0,
-            "win_rate": 0.0,
-            "wilson_lcb": 0.0,
-            "pf": null,
-            "avg_return": null
+            "n": 9,
+            "wins": 3,
+            "win_rate": 33.33,
+            "wilson_lcb": 17.21,
+            "pf": 0.8947,
+            "avg_return": -0.6178
         }
     }
 }
