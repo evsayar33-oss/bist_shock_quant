@@ -1,42 +1,59 @@
-name: BIST Evening Audit & Backtest
+name: BIST v2 Haftalik Tam Veri Yenileme
+
+# Cumartesi: 3 yillik paneli ve makro serileri bastan indirir (bolunme/duzeltme temizligi),
+# ardindan ogrenme denetimini tam veriyle yeniden calistirir.
+# Ilk kurulumdan sonra bunu Actions sekmesinden bir kez elle calistirmaniz onerilir.
 
 on:
   schedule:
-    # Hafta içi her gün TSİ 17:45 (UTC 14:45)
-    - cron: '40 10 * * 1-5'
+    - cron: '0 7 * * 6'
   workflow_dispatch:
-
-concurrency:
-  group: bist-meta-audit
-  cancel-in-progress: false
 
 permissions:
   contents: write
 
-jobs:
-  audit:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Repoyu Klonla
-        uses: actions/checkout@v4
+concurrency:
+  group: bist-v2-pipeline
+  cancel-in-progress: false
 
-      - name: Python Kurulumu
-        uses: actions/setup-python@v5
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
         with:
-          python-version: '3.10'
+          python-version: '3.11'
+          cache: 'pip'
 
       - name: Paketleri Yukle
-        run: pip install -r requirements.txt
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
 
-      - name: Kapanis Denetimini Calistir
+      - name: Tam Backfill (3 yil)
+        env:
+          TZ: Europe/Istanbul
+        run: python bist_history.py --full
+
+      - name: Ogrenme Denetimi
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           CHAT_ID: ${{ secrets.CHAT_ID }}
+          TZ: Europe/Istanbul
         run: python shock_auditor.py
 
-      - name: Sonuclari ve Yeni Parametreleri Kaydet
+      - name: Kaydet
         run: |
           git config --global user.name "QuantBot-BIST"
           git config --global user.email "bot@bist.local"
           git add -A
-          git diff-index --quiet HEAD || (git commit -m "🏆 Auto-Calibration: BIST AI State & Ledger" && git push)
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m "📥 v2 haftalik veri yenileme"
+          for i in 1 2 3; do
+            git pull --rebase -X theirs && git push && exit 0
+            sleep 5
+          done
+          exit 1
