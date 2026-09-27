@@ -1,94 +1,61 @@
-# KUR-UNUT V1 — PROJECT-SPECIFIC WIN-RATE OPTIMIZATION
+# BIST Shock Quant v2: Adaptive Meta-Engine
 
-Bu paket dört projenin her birine **kendi operasyonel hedef ufkunda** win-rate odaklı, walk-forward doğrulamalı bir optimizer ekler.
+Sistem tamamen ücretsizdir: GitHub Actions, Yahoo Finance (yfinance) ve TradingView'in açık tarayıcısı kullanılır. Ücretli API ya da anahtar gerekmez, çalıştırmak için bilgisayar da gerekmez.
 
-## Temel ilke
+## v1'e göre düzeltilen mantık hataları
 
-Amaç `win rate = %100` gibi bir hedefi körlemesine kovalamak değildir. Her proje:
+| # | v1 sorunu | v2 çözümü |
+|---|---|---|
+| 1 | 19 günlük veri vardı; istatistiksel güç yoktu | `bist_history.py` ilk çalıştırmada **3 yıllık** günlük OHLCV panelini (≈450 hisse) ve makro serileri indirir. Panel aylık gzip parçalar halinde saklanır, repo şişmez. |
+| 2 | `z_*` değişkenleri sabit katsayılı dönüşümlerdi | **Gerçek zaman-serisi z-skoru**: her hisse kendi son 60 gününe göre normalize edilir. Taban dünü de içerir, bugünü içermez; ileriye bakma yok. |
+| 3 | "Flow" adı yanıltıcıydı (tek mumun CLV'si) | Akış ailesi **Chaikin Money Flow (20g) + mum baskısı**. Bu bir OHLCV birikim vekilidir, emir defteri verisi değildir; rapordaki adı da "Birikim"dir. |
+| 4 | Öğrenme T+3'e, doğrulama T+5'e bakıyordu; eşik öğrenildiği veride seçiliyordu | Her yerde **tek etiket** kullanılır: T+1 açılış → T+5 kapanış, net getiri. Eşik yalnızca eğitim diliminde seçilir. Walk-forward **embargo'lu** (6 gün). |
+| 5 | Getiri etiketi kayıyordu, giriş fiyatı sinyal kapanışıydı | Etiketler panelden **kesin işlem günleriyle** hesaplanır; tarama kaçsa da T+5 kaymaz. Giriş fiyatı ertesi günün **açılışıdır** (gap dahil). |
+| 6 | Rejim yalnızca kesitseldi | `regime.py` makro katmanı: USDTRY şoku/volatilitesi, XU100 (USD) trendi, XBANK/XU100, VIX, TUR−EEM (ülke primi vekili). TL şoku ve risk-off durumunda rejim yükselir, eşiğe prim eklenir, maruziyet azalır. |
+| 7 | Maliyet ve pozisyon boyutu modeli yoktu | Likiditeye bağlı **gidiş-dönüş maliyet** (komisyon + kayma) etiketten düşülür. `portfolio.py`: **volatilite hedefli** ağırlık, **korelasyon filtresi** (ρ>0.75 ikinci hisse elenir), maks. 8 pozisyon, brüt limit ve rejim/otonomi çarpanı. |
 
-1. Geçmiş sonuçları toplar.
-2. Mevcut score threshold çevresinde dar ve kontrollü adaylar dener.
-3. Kronolojik walk-forward OOS testleri yapar.
-4. **Primary objective = OOS win rate** kullanır.
-5. Küçük örneklemi Wilson lower bound ile cezalandırır.
-6. Gerçek getiri mevcutsa PF ve ortalama getiri bozulma korumaları uygular.
-7. Yalnızca doğrulanmış iyileşmeyi `active_threshold` olarak promote eder.
-8. Yeterli kanıt yoksa mevcut threshold'u değiştirmez.
+Ek olarak:
+- Canlı skor, backtest ve öğrenme **aynı** `score_frame` fonksiyonunu kullanır; eğitim ile canlı arasında formül farkı yoktur.
+- IC, günlük kesitsel Spearman olarak hesaplanır. Anlamlılık, örtüşme düzeltmeli t-istatistiği ile raporlanır.
+- Terfi yalnızca OOS kanıtla olur: Wilson LCB, net ortalama ve PF korumaları, en az 150 OOS işlem. Canlı defter bozulursa önceki stabil profile rollback yapılır.
+- Win-rate optimizer, embargo'lu OOS havuzda global eşik ofsetini ayarlar.
+- `autonomy_guard.py` (drift / safe-mode durum makinesi) değişmedi; artık gerçek veri kalitesi skoru ile besleniyor.
 
-Dolayısıyla sistemler kendi başlarına performanslarını iyileştirmeye çalışır; ancak aynı anda overfit riskini sınırlamaya devam eder.
+## Günlük akış
 
-## Proje hedefleri
+- **18:45 TSİ, hafta içi** (`daily_scan.yml`): `main.py` taramayı çalıştırır, sonra `shock_auditor.py` öğrenme denetimini yapar ve Telegram'a iki mesaj gelir.
+- Sinyal **kapanış** verisiyle üretilir. **Ertesi gün açılışta** alınır, **5. işlem gününün kapanışında** satılır. ATR felaket stopu (2.5×ATR) yalnızca kuyruk riskine karşıdır.
+- **Cumartesi** (`daily_audit.yml`): 3 yıllık veri baştan indirilir (bölünme/bedelsiz temizliği) ve model tam veriyle yeniden denetlenir.
 
-- `bist_orderflow_quant`: T+3 win-rate
-- `bist_shock_quant`: T+5 win-rate
-- `sp500_shock_quant`: T+5 win-rate
-- `us_smallcap_quant`: mature lifecycle WIN-rate (projenin mevcut 6 aylık operational metric'i)
+## Kurulum (yalnızca Android telefonla)
 
-## Kurulum
+1. GitHub uygulamasında ya da tarayıcıda repoyu açın. **Add file → Upload files** ile bu paketteki dosyaları **aynı klasör yapısıyla** yükleyin. Workflow dosyaları `.github/workflows/` altına gider (mobil tarayıcıda "masaüstü sürümü" açıkken klasör yolunu dosya adına `.github/workflows/daily_scan.yml` şeklinde yazabilirsiniz).
+2. Repodan **`apply_guard_patch.py`** dosyasını silin; v1'e aitti ve artık gereksiz. `VERIFY_RESULTS.txt` de silinebilir.
+3. Eski veri dosyalarına dokunmayın: `backtest_ledger.csv`, `shock_signals_log.csv`, `gecmis_veri.csv`, `shock_ai_state.json`. v1 profilleri otomatik olarak `archive_v1` altına taşınır ve v2 şablonla başlar.
+4. **Actions** sekmesinde önce **"BIST v2 Haftalik Tam Veri Yenileme" → Run workflow** çalıştırın. Bu ilk seferde 3 yıllık veriyi indirir (≈5–15 dk).
+5. Ardından **"BIST v2 Kapanis Taramasi + Ogrenme" → Run workflow** çalıştırın. Sonrası otomatiktir.
+6. `TELEGRAM_TOKEN` ve `CHAT_ID` secret'ları v1'deki gibi kalır.
 
-Her klasördeki dosyaları aynı repo köküne kopyalayın.
+## Dosyalar
 
-### BIST Orderflow
+| Dosya | Görev |
+|---|---|
+| `config.py` | Tüm sabitler: ufuk, maliyet, filtreler, walk-forward, portföy |
+| `bist_history.py` | Panel (backfill, artımlı güncelleme, bölünme tespiti) + makro |
+| `features.py` | Özellikler, aile skorları, net etiketler, tarih bazlı rejim |
+| `regime.py` | Kesitsel + makro rejim |
+| `shock_engine.py` | Tek skor fonksiyonu (`score_frame`) |
+| `portfolio.py` | Vol-hedefli boyut, korelasyon filtresi, stop seviyeleri |
+| `shock_learner.py` | Profil öğrenme, walk-forward, terfi/rollback, kesin tarihli etiketleme |
+| `win_rate_optimizer.py` | Embargo'lu eşik ofseti optimizasyonu |
+| `main.py` | Günlük kapanış taraması |
+| `shock_auditor.py` | Öğrenme denetimi + rapor (`data/backtest_report.json`) |
+| `app.py` | Streamlit paneli (walk-forward raporu ve OOS özsermaye eğrisi dahil) |
+| `autonomy_guard.py`, `shock_fetcher.py` | Değişmedi |
 
-Yeni:
-- `win_rate_optimizer.py`
+## Bilinen sınırlar
 
-Değişen:
-- `longterm_auditor.py`
-- `main.py`
-
-### BIST Shock
-
-Yeni:
-- `win_rate_optimizer.py`
-
-Değişen:
-- `shock_auditor.py`
-- `main.py`
-
-### S&P 500 Shock
-
-Yeni:
-- `win_rate_optimizer.py`
-
-Değişen:
-- `sp_auditor.py`
-- `main.py`
-
-### US Small-Cap
-
-Yeni:
-- `win_rate_optimizer.py`
-
-Değişen:
-- `longterm_auditor.py`
-- `main.py`
-
-Mevcut `app.py`, UI veya tarihsel CSV/JSON dosyalarına bu paket içinde dokunulmaz.
-
-## Çalışma mantığı
-
-Optimizer her audit döngüsünde çalışır. Eğer OOS sonuçları mevcut threshold'a göre anlamlı biçimde daha yüksek win-rate göstermezse hiçbir şey değiştirmez.
-
-Promosyon için temel korumalar:
-
-- minimum örneklem
-- +2.0 yüzde puanı ham OOS win-rate artışı
-- +1.5 yüzde puanı Wilson lower-bound artışı
-- varsa PF'nin %10'dan fazla bozulmaması
-- varsa ortalama getirinin 0.25 yüzde puanından fazla bozulmaması
-
-## Test
-
-Repo kökünde ilgili proje için:
-
-```bash
-python -m py_compile win_rate_optimizer.py main.py <audit_file>.py
-python -c "from win_rate_optimizer import wilson_lower_bound; print(wilson_lower_bound(45, 60))"
-```
-
-Bu optimizer mevcut sistemi değiştirmeden önce yalnızca `state["win_rate_optimizer"]` içine aday/karar bilgisi yazar.
-
-## Önemli
-
-Bu katman gelecekteki win-rate'i garanti etmez. Görevi, mevcut proje için **doğrulanmış** win-rate iyileştirmelerini otomatik olarak bulmak ve güvenli koşullarda uygulamaktır.
+- **Survivorship bias:** Evren bugünkü hisselerle başlar ve sonra yalnızca genişler. Borsadan çıkmış hisselerin geçmişi eksiktir; bu nedenle backtest bir miktar iyimser olabilir.
+- Yahoo'nun BIST fiyatları bölünmeye göre düzeltilmiştir, **temettüye göre düzeltilmemiştir**. Temettü günlerinde küçük bir etiket gürültüsü oluşur. %25'i aşan günlük hareketler (düzeltilmemiş kurumsal işlem) geçersiz bar sayılır.
+- CDS ücretsiz ve güvenilir biçimde alınamadığı için vekil kullanılır (TUR−EEM + USDTRY volatilitesi).
+- Maliyet modeli muhafazakârdır (tek yön 8 bps komisyon + likiditeye bağlı 3–60 bps kayma). Aracı kurumunuzun gerçek oranına göre `config.py` içinden ayarlanabilir.

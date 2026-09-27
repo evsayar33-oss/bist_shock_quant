@@ -1,62 +1,58 @@
-import json
+"""Adaptive BIST Meta-Engine v2 — KAPANIŞ SONRASI tarama (günlük).
+
+Akış
+ 1) TradingView kesiti (evren + bugünün barı yedeği)            [ücretsiz]
+ 2) Panel güncelle (yfinance, bölünme kontrollü) + makro seriler   [ücretsiz]
+ 3) Özellikler (gerçek z-skor, birikim vekili, gap riski) -> rejim (kesitsel+makro)
+ 4) Skor (öğrenilmiş rejim profilleri) -> otonomi koruması -> bilanço kontrolü
+ 5) Portföy: vol-hedefli boyut + korelasyon filtresi + brüt limit
+ 6) Defter: bekleyen giriş (T+1 açılış), açık pozisyon takibi, kesin tarihli etiketleme
+ 7) Telegram raporu
+
+Sinyal T günü kapanışta üretilir; giriş ertesi gün AÇILIŞTA yapılır. Backtest etiketi ile birebir.
+"""
+from __future__ import annotations
+
 import os
 from datetime import datetime
 
 import numpy as np
 import pandas as pd
 import requests
-import yfinance as yf
 
-from shock_fetcher import fetch_all_data
-from shock_engine import calculate_shock_scores, gecmis_veriyi_yukle, GECMIS_DOSYA, classify_bist_regime
-from shock_learner import (
-    update_realized_shock_returns,
-    compute_dynamic_market_thresholds,
-    calibrate_adaptive_weights,
-    calibrate_resilience_weight,
-    build_runtime_meta_profile,
-    load_ai_state,
-    save_ai_state,
-    log_shock_signals,
-    load_signal_history,
-    AI_STATE_FILE,
-)
+import config as C
 from autonomy_guard import evaluate_autonomy_guard
+from bist_history import append_live_bar, load_macro, merge_universe, update_incremental, update_macro
+from features import attach_regime, build_features, correlation_matrix
+from portfolio import build_portfolio
+from regime import compute_macro_frame
+from shock_engine import entry_status, gecmis_veriyi_yukle, score_frame, stars_for
+from shock_fetcher import get_bist_raw_data
+from shock_learner import (_label_rows, active_profiles, load_ai_state, load_signal_history, log_shock_signals,
+                           save_ai_state, update_realized_shock_returns)
 
-LEDGER_FILE = "backtest_ledger.csv"
+LIVE_LOOKBACK_DAYS = 220
 
 
+# ------------------------------------------------------------------
+# Telegram
+# ------------------------------------------------------------------
 def send_telegram_message(message):
-    token = os.environ.get("TELEGRAM_TOKEN")
-    chat_id = os.environ.get("CHAT_ID")
+    token, chat_id = os.environ.get("TELEGRAM_TOKEN"), os.environ.get("CHAT_ID")
     if not token or not chat_id:
+        print(message)
         return
-
     url = f"https://api.telegram.org/bot{token}/sendMessage"
-    max_len = 3800
-    messages = []
-    if len(message) > max_len:
-        parts = message.split("\n\n")
-        current_msg = ""
-        for part in parts:
-            if len(current_msg) + len(part) + 2 < max_len:
-                current_msg += part + "\n\n"
-            else:
-                if current_msg.strip():
-                    messages.append(current_msg.strip())
-                current_msg = part + "\n\n"
-        if current_msg.strip():
-            messages.append(current_msg.strip())
-    else:
-        messages = [message]
-
-    for msg in messages:
-        payload = {
-            "chat_id": chat_id,
-            "text": msg,
-            "parse_mode": "HTML",
-            "disable_web_page_preview": True,
-        }
+    parts, cur = [], ""
+    for block in message.split("\n\n"):
+        if len(cur) + len(block) + 2 > 3800 and cur.strip():
+            parts.append(cur.strip())
+            cur = ""
+        cur += block + "\n\n"
+    if cur.strip():
+        parts.append(cur.strip())
+    for msg in parts:
+        payload = {"chat_id": chat_id, "text": msg, "parse_mode": "HTML", "disable_web_page_preview": True}
         try:
             res = requests.post(url, json=payload, timeout=15)
             if not res.json().get("ok"):
@@ -66,450 +62,335 @@ def send_telegram_message(message):
             print(f"Telegram hatası: {exc}")
 
 
-def assess_bist_market_regime(df_market):
-    snapshot = classify_bist_regime(df_market)
-    label = snapshot["label"]
-    confidence = snapshot["confidence"]
-    red_ratio = snapshot["red_ratio"]
-    mean_change = snapshot["mean_change"]
-    median_change = snapshot["median_change"]
-    dispersion = snapshot["dispersion"]
-
-    labels = {
-        "CRASH": "🚨 PİYASA ÇÖKÜŞ REJİMİ",
-        "STRESS": "⚠️ PİYASA STRES REJİMİ",
-        "ROTATION": "🔄 ROTASYON REJİMİ",
-        "EXPANSION": "🚀 GENİŞLEME / GÜÇLENME REJİMİ",
-        "QUIET": "🧊 DÜŞÜK VOLATİLİTE / SESSİZ REJİM",
-        "NORMAL": "⚖️ NORMAL / DALGALI REJİM",
-    }
-    status = (
-        f"{labels.get(label, label)} "
-        f"(Güven %{confidence * 100:.0f} | Düşen %{red_ratio * 100:.0f} | "
-        f"Ort %{mean_change:+.2f} | Medyan %{median_change:+.2f} | Disp %{dispersion:.2f})"
-    )
-    return bool(snapshot["is_crashing"]), status, snapshot
+# ------------------------------------------------------------------
+# Veri
+# ------------------------------------------------------------------
+def fetch_live_snapshot():
+    try:
+        df = get_bist_raw_data()
+        if df is not None and len(df) > 10:
+            return df
+    except Exception as exc:
+        print(f"TradingView hatası: {exc}")
+    return pd.DataFrame()
 
 
+def live_bar_is_fresh(panel, live):
+    """Tatil/hafta sonu elle çalıştırmada TV önceki seansı döndürür; panelin son günüyle aynıysa ekleme."""
+    if live.empty or panel.empty:
+        return not live.empty
+    now = pd.Timestamp.now()
+    if now.weekday() >= 5 or (now.hour, now.minute) < (18, 10):
+        return False
+    last = panel[panel["tarih"] == panel["tarih"].max()][["ticker", "close"]]
+    m = live.merge(last, on="ticker", suffixes=("", "_p"))
+    if len(m) < 20:
+        return True
+    same = (np.abs(m["close"] / m["close_p"] - 1.0) < 1e-6).mean()
+    return same < 0.8
+
+
+def data_quality(panel, live_ok):
+    if panel.empty:
+        return 0.0, "PANEL_YOK"
+    last = panel["tarih"].max()
+    lag = int(np.busday_count(last.date(), pd.Timestamp.now().date()))
+    n_last = int((panel["tarih"] == last).sum())
+    n_prev = panel[panel["tarih"] < last].groupby("tarih").size().tail(20).median() if panel["tarih"].nunique() > 1 else n_last
+    coverage = n_last / max(n_prev, 1)
+    score = 100.0
+    if lag > 1:
+        score -= min(20.0 * (lag - 1), 60.0)
+    if coverage < 0.8:
+        score -= (0.8 - coverage) * 100.0
+    if not live_ok:
+        score -= 5.0
+    return float(np.clip(score, 0, 100)), f"son_gün={last.date()} gecikme={lag}g kapsam=%{coverage * 100:.0f}"
+
+
+# ------------------------------------------------------------------
+# Bilanço
+# ------------------------------------------------------------------
 def check_bist_earnings_risk(ticker):
     try:
-        t = yf.Ticker(f"{ticker}.IS")
-        cal = t.calendar
-        if cal is None:
+        import yfinance as yf
+        cal = yf.Ticker(f"{ticker}.IS").calendar
+        ed = cal.get("Earnings Date") if hasattr(cal, "get") else None
+        if ed is None:
             return False, ""
-
-        ed = None
-        if isinstance(cal, dict):
-            ed = cal.get("Earnings Date")
-        elif hasattr(cal, "get"):
-            ed = cal.get("Earnings Date")
-        elif hasattr(cal, "loc") and "Earnings Date" in cal.index:
-            ed = cal.loc["Earnings Date"].values
-
-        if ed is not None:
-            if not isinstance(ed, (list, np.ndarray, tuple)):
-                ed = [ed]
-            for d in ed:
-                if pd.notna(d):
-                    d_date = d.date() if hasattr(d, "date") else pd.to_datetime(d).date()
-                    days_diff = (d_date - datetime.now().date()).days
-                    if 0 <= days_diff <= 5:
-                        return True, f"{d_date.strftime('%d.%m')} ({days_diff} Gün Kaldı)"
+        ed = ed if isinstance(ed, (list, tuple, np.ndarray)) else [ed]
+        for d in ed:
+            if pd.notna(d):
+                dd = pd.Timestamp(d).date()
+                diff = (dd - datetime.now().date()).days
+                if 0 <= diff <= C.HORIZON + 2:
+                    return True, f"{dd.strftime('%d.%m')} ({diff} gün)"
     except Exception:
         pass
     return False, ""
 
 
-def generate_exit_signals(df_current):
-    if not os.path.exists(LEDGER_FILE):
-        return ""
+# ------------------------------------------------------------------
+# Defter (ledger) v2
+# ------------------------------------------------------------------
+def load_ledger():
+    if not os.path.exists(C.LEDGER_FILE):
+        return pd.DataFrame()
     try:
-        df_ledger = pd.read_csv(LEDGER_FILE)
+        return pd.read_csv(C.LEDGER_FILE)
     except Exception:
-        return ""
+        return pd.DataFrame()
 
-    if df_ledger.empty or "is_completed" not in df_ledger.columns:
-        return ""
 
-    open_positions = df_ledger[df_ledger["is_completed"] == 0]
-    if open_positions.empty:
-        return ""
-
-    close_map = dict(zip(df_current["ticker"], df_current["close"]))
-    bugun = datetime.now().date()
-    signals = []
-
-    for _, row in open_positions.iterrows():
-        ticker = row["ticker"]
-        if ticker not in close_map:
+def update_ledger_from_panel(ledger, panel):
+    if ledger.empty:
+        return ledger
+    for c in ("label_version", "entry_date", "entry_price", "cost_rt", "net_ret_5d", "exit_date",
+              "price_d1", "price_d3", "price_d5", "return_d1", "return_d3", "return_d5", "is_completed"):
+        if c not in ledger.columns:
+            ledger[c] = np.nan
+    ledger["is_completed"] = pd.to_numeric(ledger["is_completed"], errors="coerce").fillna(0).astype(int)
+    for c in ("entry_date", "exit_date", "date"):
+        ledger[c] = ledger[c].astype(object)
+    todo = ledger[(pd.to_numeric(ledger["label_version"], errors="coerce") == 2) & (ledger["is_completed"] == 0)]
+    labels = _label_rows(todo, "date", "ticker", panel, liq_col="liq20")
+    for idx, lab in labels.items():
+        if "entry_price" not in lab:
             continue
+        ledger.at[idx, "entry_date"] = lab["entry_date"]
+        ledger.at[idx, "entry_price"] = lab["entry_price"]
+        ledger.at[idx, "cost_rt"] = lab["cost_rt"]
+        for k in (1, 3, C.HORIZON):
+            if f"close_d{k}" in lab:
+                ledger.at[idx, f"price_d{k}"] = lab[f"close_d{k}"]
+                ledger.at[idx, f"return_d{k}"] = lab[f"gross_d{k}"]
+        if f"gross_d{C.HORIZON}" in lab:
+            ledger.at[idx, "net_ret_5d"] = round(lab[f"gross_d{C.HORIZON}"] - lab["cost_rt"], 3)
+            ledger.at[idx, "exit_date"] = lab.get("exit_date")
+            ledger.at[idx, "is_completed"] = 1
+    return ledger
 
-        curr_p = float(close_map[ticker])
-        entry_p = float(row["entry_price"])
-        try:
-            row_date = datetime.strptime(str(row["date"]), "%Y-%m-%d").date()
-        except Exception:
+
+def record_ledger_entries(ledger, portfolio_df, day):
+    day_str = pd.Timestamp(day).strftime("%Y-%m-%d")
+    if not ledger.empty and "date" in ledger.columns:
+        lv = pd.to_numeric(ledger.get("label_version"), errors="coerce")
+        ledger = ledger[~((ledger["date"].astype(str) == day_str) & (lv == 2))]  # aynı gün yeniden çalıştırma
+    if portfolio_df is None or portfolio_df.empty:
+        return ledger
+    picks = portfolio_df[portfolio_df["weight_pct"] > 0]
+    if picks.empty:
+        return ledger
+    rows = []
+    for _, r in picks.iterrows():
+        rows.append({
+            "date": day_str, "ticker": r["ticker"], "label_version": 2, "signal_close": r["close"],
+            "entry_date": np.nan, "entry_price": np.nan, "weight_pct": r["weight_pct"], "atr": r.get("atr"),
+            "stop_atr_mult": C.STOP_ATR, "initial_score": r["shock_score"],
+            "effective_min_score": r["effective_min_score"], "regime": r.get("meta_regime"),
+            "regime_confidence": r.get("meta_regime_confidence"), "macro_label": r.get("macro_label"),
+            "macro_stress": r.get("macro_stress"), "liq20": r.get("liq20"), "volatility": r.get("volatility"),
+            "z_vol": r.get("z_vol"), "z_range": r.get("z_range"), "z_flow": r.get("z_flow"),
+            "z_lambda": r.get("z_lambda"), "cmf20": r.get("cmf20"), "resilience_score": r.get("resilience_score"),
+            "excess_return": r.get("excess_return"), "flow_score": r.get("flow_score"),
+            "event_score": r.get("event_score"), "activity_score": r.get("activity_score"),
+            "liquidity_score": r.get("liquidity_score"), "overnight_risk": r.get("overnight_risk"),
+            "entry_status": r.get("entry_status"), "is_completed": 0,
+        })
+    new = pd.DataFrame(rows)
+    return pd.concat([ledger, new], ignore_index=True, sort=False)
+
+
+def exit_engine_text(ledger, panel):
+    if ledger.empty or panel.empty:
+        return ""
+    lv = pd.to_numeric(ledger.get("label_version"), errors="coerce")
+    open_pos = ledger[(lv == 2) & (ledger["is_completed"] == 0)]
+    if open_pos.empty:
+        return ""
+    last_day = panel["tarih"].max()
+    today = panel[panel["tarih"] == last_day].set_index("ticker")
+    cal = pd.DatetimeIndex(sorted(panel["tarih"].unique()))
+    lines = []
+    for _, r in open_pos.iterrows():
+        t = r["ticker"]
+        if pd.isna(r.get("entry_price")):
+            lines.append(f"⏳ <b>#{t}</b> — giriş bekleniyor (sinyal {r['date']}, yarın AÇILIŞTA al, ağırlık %{float(r.get('weight_pct', 0)):.1f})")
             continue
-        days_held = (bugun - row_date).days
-        pnl = ((curr_p - entry_p) / entry_p) * 100.0
-
-        if pnl <= -3.0:
-            signals.append(
-                f"🚨 <b>#{ticker} STOP-LOSS (ACİL ÇIKIŞ)!</b>\n"
-                f"  ↳ <i>Giriş: {entry_p:.2f} TL | Güncel: {curr_p:.2f} TL | "
-                f"Zarar: <b>%{pnl:+.2f}</b>\n  🛑 Stop kırıldı, zararı kes ve çık!</i>"
-            )
-        elif pnl >= 9.0:
-            signals.append(
-                f"💰 <b>#{ticker} KÂR AL!</b>\n"
-                f"  ↳ <i>Giriş: {entry_p:.2f} TL | Güncel: {curr_p:.2f} TL | "
-                f"Kâr: <b>%{pnl:+.2f}</b>\n  🎯 Pozisyonun %50'sini sat, kalanın stopunu maliyete çek!</i>"
-            )
-        elif pnl >= 4.0:
-            signals.append(
-                f"🔒 <b>#{ticker} KÂR KORUMA / MALİYET STOPU</b>\n"
-                f"  ↳ <i>Fiyat: {curr_p:.2f} TL | Kâr: <b>%{pnl:+.2f}</b>\n"
-                f"  🛡️ Stop maliyete ({entry_p:.2f} TL) çekildi.</i>"
-            )
-        elif days_held >= 5:
-            signals.append(
-                f"⏰ <b>#{ticker} 1 HAFTALIK VADE DOLDU</b>\n"
-                f"  ↳ <i>Kapanış: {curr_p:.2f} TL | Net: <b>%{pnl:+.2f}</b></i>"
-            )
+        if t not in today.index:
+            continue
+        entry = float(r["entry_price"])
+        cur = float(today.at[t, "close"])
+        low = float(today.at[t, "low"])
+        atr = float(r.get("atr") or 0.0)
+        stop = entry - C.STOP_ATR * atr if atr > 0 else entry * 0.93
+        held = int(((cal >= pd.Timestamp(r["entry_date"])) & (cal <= last_day)).sum())
+        pnl = (cur / entry - 1.0) * 100.0
+        if low <= stop:
+            lines.append(f"🚨 <b>#{t} FELAKET STOPU</b> ({stop:.2f}) kırıldı | K/Z %{pnl:+.2f} → yarın açılışta çık")
+        elif held >= C.HORIZON:
+            lines.append(f"⏰ <b>#{t} VADE DOLDU</b> ({held}/{C.HORIZON}) | K/Z %{pnl:+.2f} → kapanışta çıkılmış sayılır")
         else:
-            signals.append(
-                f"🟢 <b>#{ticker} TAŞIMAYA DEVAM ET</b> ({days_held}. Gün)\n"
-                f"  ↳ <i>Fiyat: {curr_p:.2f} TL | Durum: <b>%{pnl:+.2f}</b></i>"
-            )
-
-    if not signals:
+            lines.append(f"🟢 <b>#{t}</b> {held}/{C.HORIZON}. gün | K/Z %{pnl:+.2f} | stop {stop:.2f}")
+    if not lines:
         return ""
-
-    return (
-        "🛡️ <b>BIST AÇIK POZİSYONLAR & ÇIKIŞ ALARMLARI (Exit Engine):</b>\n"
-        "━━━━━━━━━━━━━━━━━━━━\n"
-        + "\n\n".join(signals)
-        + "\n━━━━━━━━━━━━━━━━━━━━\n\n"
-    )
+    return "🛡️ <b>AÇIK / BEKLEYEN POZİSYONLAR</b>\n" + "\n".join(lines) + "\n━━━━━━━━━━━━━━━━━━━━\n\n"
 
 
-def record_clean_ledger_entries(df_scored, market_is_crashing=False):
-    if df_scored is None or df_scored.empty:
-        return
+# ------------------------------------------------------------------
+# Rapor
+# ------------------------------------------------------------------
+def format_report(port, scored_today, regime, guard, state, dq_text, exit_text):
+    wf = state.get("backtest_summary", {})
+    msg = exit_text
+    msg += "🧠 <b>ADAPTIVE BIST META-ENGINE v2</b>\n"
+    msg += f"🗓 <i>{pd.Timestamp(regime['day']).strftime('%Y-%m-%d')} kapanış | giriş: yarın açılış | çıkış: T+{C.HORIZON} kapanış</i>\n"
+    msg += (f"🌐 <b>Rejim:</b> {regime['label']} (kesitsel {regime.get('cross_label')}, güven %{regime['confidence'] * 100:.0f})\n"
+            f"🌍 <b>Makro:</b> {regime.get('macro_label')} | stres {regime.get('macro_stress', 0):.2f} | "
+            f"USDTRY 5g %{(regime.get('usdtry_ret5') or 0):+.2f} | TUR-EEM 20g %{(regime.get('tur_rel20') or 0):+.1f}\n")
+    msg += (f"🛡️ <b>Otonomi:</b> {guard.get('mode')} ({guard.get('reason')}) | maruziyet x{regime['exposure_mult']:.2f}\n")
+    if wf:
+        msg += (f"📊 <b>OOS doğrulama:</b> N={wf.get('n', 0)} | WR %{wf.get('win_rate', 0):.1f} (LCB %{wf.get('wilson_lcb', 0):.1f}) | "
+                f"net ort %{wf.get('avg_return', 0):+.2f} | PF {wf.get('profit_factor', 0):.2f} | t={wf.get('cohort_t', 0):.1f}\n")
+    msg += f"🔧 <i>Veri: {dq_text}</i>\n━━━━━━━━━━━━━━━━━━━━\n\n"
 
-    bugun_str = datetime.now().strftime("%Y-%m-%d")
-    candidates = df_scored[df_scored["shock_score"] > 0].copy()
-    if candidates.empty:
-        return
-
-    if "effective_min_score" in candidates.columns:
-        candidates = candidates[candidates["shock_score"] >= candidates["effective_min_score"]]
-    else:
-        minimum = 88.0 if market_is_crashing else 75.0
-        candidates = candidates[candidates["shock_score"] >= minimum]
-
-    candidates = candidates.sort_values(
-        ["shock_score", "overnight_risk", "resilience_score"],
-        ascending=[False, True, False],
-    ).head(10)
-    new_rows = []
-
-    for _, r in candidates.iterrows():
-        entry_status = str(r.get("entry_status", ""))
-        value_traded = float(r.get("value_traded", 0.0))
-        resilience = float(r.get("resilience_score", 0.0))
-        excess_return = float(r.get("excess_return", 0.0))
-        overnight_risk = float(r.get("overnight_risk", 100.0))
-        score = float(r.get("shock_score", 0.0))
-        current_positive = bool(r.get("current_positive", False))
-
-        if "BİLANÇO" in entry_status:
-            continue
-        if value_traded < 25_000_000.0 or overnight_risk >= 82.0:
-            continue
-        if not current_positive:
-            continue
-
-        if market_is_crashing:
-            if excess_return <= 0.0 or resilience < 55.0:
-                continue
-            if score < 82.0:
-                continue
-
-        new_rows.append(
-            {
-                "date": bugun_str,
-                "ticker": r["ticker"],
-                "entry_price": r["close"],
-                "z_vol": r.get("z_vol", 0.0),
-                "z_range": r.get("z_range", 0.0),
-                "z_flow": r.get("z_flow", 0.0),
-                "z_lambda": r.get("z_lambda", 0.0),
-                "resilience_score": resilience,
-                "excess_return": excess_return,
-                "rel_1m_pct": r.get("rel_1m_pct", 50.0),
-                "rel_3m_pct": r.get("rel_3m_pct", 50.0),
-                "trend_persistence": r.get("trend_persistence", 50.0),
-                "non_price_score": r.get("non_price_score", 50.0),
-                "flow_score": r.get("flow_score", 50.0),
-                "activity_score": r.get("activity_score", 50.0),
-                "liquidity_score": r.get("liquidity_score", 50.0),
-                "overnight_risk": overnight_risk,
-                "meta_score": r.get("meta_score", score),
-                "risk_adjusted_score": r.get("risk_adjusted_score", score),
-                "regime": r.get("meta_regime", "NORMAL"),
-                "regime_confidence": r.get("meta_regime_confidence", 0.35),
-                "crash_resilient": bool(r.get("crash_resilient", False)),
-                "crash_survivor": bool(r.get("crash_survivor", False)),
-                "entry_status": r.get("entry_status", "NORMAL"),
-                "initial_score": score,
-                "price_d1": np.nan,
-                "price_d3": np.nan,
-                "price_d5": np.nan,
-                "return_d1": np.nan,
-                "return_d3": np.nan,
-                "return_d5": np.nan,
-                "is_completed": 0,
-            }
-        )
-
-    if not new_rows:
-        return
-
-    df_new = pd.DataFrame(new_rows)
-    if os.path.exists(LEDGER_FILE):
-        try:
-            df_old = pd.read_csv(LEDGER_FILE)
-            if "date" in df_old.columns and "ticker" in df_old.columns:
-                df_old = df_old[
-                    ~((df_old["date"] == bugun_str) & (df_old["ticker"].isin(df_new["ticker"])))
-                ]
-            df_final = pd.concat([df_old, df_new], ignore_index=True, sort=False)
-        except Exception:
-            df_final = df_new
-    else:
-        df_final = df_new
-
-    df_final.to_csv(LEDGER_FILE, index=False)
-
-
-def format_shock_report(
-    df_scored,
-    exit_signals_text,
-    market_regime_text,
-    market_snapshot,
-    runtime_profile,
-):
-    if df_scored is None or df_scored.empty:
-        return exit_signals_text or "BIST taraması sonuç üretmedi."
-
-    effective_min = float(df_scored["effective_min_score"].iloc[0]) if "effective_min_score" in df_scored.columns else 75.0
-    shocks = df_scored[df_scored["shock_score"] >= effective_min].sort_values(
-        by=["shock_score", "overnight_risk", "resilience_score"], ascending=[False, True, False]
-    )
-
-    msg = exit_signals_text or ""
-    msg += "🧠 <b>ADAPTIVE BIST META-ENGINE</b>\n"
-    msg += f"🗓 <i>{datetime.now().strftime('%Y-%m-%d %H:%M')} | Seans Taraması</i>\n"
-    msg += f"🌐 <b>Rejim:</b> <i>{market_regime_text}</i>\n"
-    msg += f"🎯 <b>Canlı Eşik:</b> {effective_min:.1f} | <b>Profil:</b> {runtime_profile.get('source', 'META')}\n"
-    msg += "━━━━━━━━━━━━━━━━━━━━\n\n"
-
-    if market_snapshot.get("is_crashing"):
-        msg += (
-            "🛡️ <b>CRASH SHIELD:</b> Ana seçim skoru fiyat hareketini kovalamak yerine "
-            "olay/akış/aktivite/likidite ve göreli dayanıklılık kombinasyonunu kullanıyor.\n\n"
-        )
-
-    if shocks.empty:
-        watch = df_scored[df_scored["watch_score"] >= max(effective_min - 5.0, 65.0)].head(5)
+    picks = port[port["weight_pct"] > 0] if port is not None and not port.empty else pd.DataFrame()
+    if picks.empty:
+        eff = float(scored_today["effective_min_score"].median()) if not scored_today.empty else 0
+        watch = scored_today[scored_today["watch_score"] >= eff - 5].sort_values("watch_score", ascending=False).head(5)
         if not watch.empty:
-            msg += "🔎 <b>WATCH / HENÜZ GİRİŞ EŞİĞİNDE DEĞİL:</b>\n"
-            for _, row in watch.iterrows():
-                msg += (
-                    f"• #{row['ticker']} | Meta {row['watch_score']:.1f} | "
-                    f"Non-price {row.get('non_price_score', 0):.1f} | "
-                    f"Risk {row.get('overnight_risk', 100):.1f}\n"
-                )
-            msg += "\n"
-        msg += "🛡️ <i>Otomatik giriş kriterlerini geçen aday bulunamadı.</i>"
-        return msg
+            msg += "🔎 <b>İZLEME (eşik altı):</b>\n" + "".join(
+                f"• #{r.ticker} | skor {r.watch_score:.1f} / eşik {r.effective_min_score:.1f}\n" for r in watch.itertuples())
+        return msg + "\n🛡️ <i>Bugün giriş kriterlerini geçen aday yok.</i>"
 
-    for _, row in shocks.head(10).iterrows():
-        msg += (
-            f"🚀 <b>#{row['ticker']}</b> ── <b>{row['shock_score']:.1f} Puan</b> "
-            f"({row['stars']})\n"
-        )
-        msg += (
-            f"• <b>Değişim:</b> %{row['change_%']:+.2f} | "
-            f"<b>Piyasa Üstü:</b> %{row.get('excess_return', 0.0):+.2f}\n"
-        )
-        msg += (
-            f"• <b>Non-price:</b> {row.get('non_price_score', 0.0):.1f} | "
-            f"<b>Dayanıklılık:</b> {row.get('resilience_score', 0.0):.1f} | "
-            f"<b>Akış:</b> {row.get('flow_score', 0.0):.1f}\n"
-        )
-        msg += (
-            f"• <b>Likidite:</b> {row.get('liquidity_score', 0.0):.1f} | "
-            f"<b>Overnight Risk:</b> {row.get('overnight_risk', 100.0):.1f} | "
-            f"<b>1A/3A Rel:</b> {row.get('rel_1m_pct', 50):.0f}/{row.get('rel_3m_pct', 50):.0f}\n"
-        )
-        msg += f"• <b>Giriş:</b> <i>{row['entry_status']}</i>\n"
-        msg += f"💰 <b>KASA:</b> <b>{row['allocation']}</b>\n\n"
-
-    msg += "━━━━━━━━━━━━━━━━━━━━\n"
-    msg += f"🎯 <i>{len(shocks)} aktif giriş adayı. Meta Engine v{runtime_profile.get('version', 1)}.</i>"
+    for _, r in picks.iterrows():
+        msg += f"🚀 <b>#{r['ticker']}</b> ── <b>{r['shock_score']:.1f}</b> / eşik {r['effective_min_score']:.1f} ({r['stars']})\n"
+        msg += (f"• Günlük %{r['change_%']:+.2f} | piyasa üstü %{r.get('excess_return', 0):+.2f} | "
+                f"RVOL {r.get('rvol', 1):.2f}x | zVol {r.get('z_vol', 0):+.1f}σ\n")
+        msg += (f"• Olay {r['event_score']:.0f} | Birikim {r['flow_score']:.0f} (CMF {r.get('cmf20', 0):+.2f}) | "
+                f"Dayanıklılık {r['resilience_score']:.0f} | Gap-risk {r['overnight_risk']:.0f}\n")
+        msg += f"• Giriş: <i>{r['entry_status']}</i> | Felaket stop ≈ {r['stop_price']:.2f}\n"
+        msg += f"💰 <b>Ağırlık: {r['allocation']}</b>\n\n"
+    skipped = port[(port["weight_pct"] <= 0) & (port["skip_reason"] != "")]
+    if not skipped.empty:
+        msg += "↪️ <i>Elenen: " + ", ".join(f"#{a} ({b})" for a, b in zip(skipped["ticker"], skipped["skip_reason"])) + "</i>\n"
+    msg += f"━━━━━━━━━━━━━━━━━━━━\n🎯 <i>{len(picks)} pozisyon | brüt %{picks['weight_pct'].sum():.1f}</i>"
     return msg
 
 
+# ------------------------------------------------------------------
+# Ana akış
+# ------------------------------------------------------------------
 def main():
-    print(f"[{datetime.now().strftime('%H:%M:%S')}] === Adaptive BIST Meta-Engine Başlıyor ===")
+    print(f"[{datetime.now():%H:%M:%S}] === Adaptive BIST Meta-Engine v2 ===")
+    live = fetch_live_snapshot()
+    if not live.empty:
+        merge_universe(live["ticker"].tolist()[: C.MAX_UNIVERSE])
 
-    df_current = fetch_all_data()
-    if df_current.empty:
-        print("Hata: BIST verisi temin edilemedi.")
+    panel = update_incremental()
+    macro_frame = compute_macro_frame(update_macro())
+    if panel.empty:
+        send_telegram_message("⚠️ BIST v2: geçmiş panel oluşturulamadı (yfinance erişimi). Tarama atlandı.")
+        return
+    live_ok = live_bar_is_fresh(panel, live)
+    if live_ok:
+        panel = append_live_bar(panel, live, pd.Timestamp.now().normalize())
+    dq, dq_text = data_quality(panel, not live.empty)
+    print(f"Veri kalitesi {dq:.0f} | {dq_text}")
+
+    recent_days = sorted(panel["tarih"].unique())[-LIVE_LOOKBACK_DAYS:]
+    feat = build_features(panel[panel["tarih"].isin(recent_days)], with_labels=False)
+    day = feat["tarih"].max()
+    today = attach_regime(feat[feat["tarih"] == day], macro_frame)
+    if today.empty:
+        print("Bugün için özellik yok.")
         return
 
-    market_is_crashing, regime_status_text, market_snapshot = assess_bist_market_regime(df_current)
-    print(f"Piyasa Durumu: {regime_status_text}")
-
-    update_realized_shock_returns(df_current)
+    from regime import classify_bist_regime, combine_regime, macro_snapshot
+    cross = classify_bist_regime(today[~today["is_illiquid"]])
+    regime = combine_regime(cross, macro_snapshot(macro_frame, day))
+    regime["day"] = day
+    print(f"Rejim: {regime['label']} | makro {regime['macro_label']} stres {regime['macro_stress']}")
 
     state = load_ai_state()
+    profiles = active_profiles(state)  # v1 durum dosyası burada otomatik arşivlenir
+    offset = float(state.get("win_rate_optimizer", {}).get("active_threshold", 75.0)) - 75.0
+    offset = float(np.clip(offset, -6.0, 10.0))
 
-    legacy_weights, legacy_status = calibrate_adaptive_weights()
-    resilience_weight, resilience_status = calibrate_resilience_weight()
+    # Etiketleri güncelle (performans kayması için)
+    sig_hist = update_realized_shock_returns(panel)
+    perf = None
+    if not sig_hist.empty and "realized_5d" in sig_hist.columns:
+        v2 = sig_hist[(pd.to_numeric(sig_hist.get("label_version"), errors="coerce") == 2)
+                      & (sig_hist.get("model_variant") == "active")]
+        perf = pd.to_numeric(v2["realized_5d"], errors="coerce").dropna()
 
-    runtime_profile = build_runtime_meta_profile(market_snapshot, state)
-    wr_threshold = float(state.get("win_rate_optimizer", {}).get("active_threshold", runtime_profile.get("min_score", 75.0)))
-    runtime_profile["min_score"] = max(float(runtime_profile.get("min_score", 75.0)), wr_threshold)
+    scored = score_frame(today, profiles, threshold_offset=offset)
+    guard = evaluate_autonomy_guard(state, features=scored, regime={"label": regime["label"]},
+                                    regime_confidence=float(regime["confidence"]), performance_returns=perf,
+                                    data_quality_score=dq, row_count=len(scored), min_rows=100, project="bist_shock")
+    scored = score_frame(today, profiles, threshold_offset=offset,
+                         extra_threshold_add=float(guard.get("signal_threshold_add", 0.0)))
+    if guard.get("block_new_entries"):
+        scored["effective_min_score"] = 101.0
+    scored["entry_status"] = [entry_status(r) for _, r in scored.iterrows()]
+    scored["stars"] = [stars_for(r) for _, r in scored.iterrows()]
+    scored = scored.sort_values(["shock_score", "risk_adjusted_score"], ascending=False).reset_index(drop=True)
 
-    df_temp = calculate_shock_scores(
-        df_current,
-        pd.DataFrame(),
-        dynamic_thresholds=DEFAULT_SAFE_THRESHOLDS(),
-        dynamic_weights=legacy_weights,
-        market_is_crashing=market_is_crashing,
-        regime_snapshot=market_snapshot,
-        meta_profile=runtime_profile,
-    )
-    dynamic_thresholds = compute_dynamic_market_thresholds(df_temp)
+    cands = scored[scored["shock_score"] >= scored["effective_min_score"]].head(C.TOP_K_PER_DAY).copy()
+    for idx, r in cands.iterrows():
+        has, when = check_bist_earnings_risk(r["ticker"])
+        if has:
+            cands.at[idx, "shock_score"] = 0.0
+            cands.at[idx, "entry_status"] = f"🚨 BİLANÇO RİSKİ ({when})"
+    cands = cands[cands["shock_score"] > 0]
+    exposure = float(guard.get("exposure_multiplier", 1.0)) * float(regime["macro_exposure_mult"])
+    regime["exposure_mult"] = exposure
+    corr = correlation_matrix(panel, cands["ticker"].tolist(), end_date=day)
+    port = build_portfolio(cands, corr, exposure_mult=exposure)
 
-    state["thresholds"] = {**state.get("thresholds", {}), **dynamic_thresholds}
-    state["weights"] = {**state.get("weights", {}), **legacy_weights}
-    state["resilience_weight"] = resilience_weight
-    state["status"] = (
-        f"🧠 META ENGINE | {market_snapshot['label']} | "
-        f"Güven %{market_snapshot['confidence'] * 100:.0f} | "
-        f"{legacy_status} | {resilience_status}"
-    )
-    state.setdefault("meta_engine", {})
-    state["meta_engine"]["version"] = 1
-    state["meta_engine"]["last_runtime"] = runtime_profile
+    # Varsayılan tahsis metni (portföy dışı satırlar için)
+    scored["allocation"] = "İşlem Açma"
+    scored["weight_pct"] = 0.0
+    if not port.empty:
+        amap = dict(zip(port["ticker"], port["allocation"]))
+        wmap = dict(zip(port["ticker"], port["weight_pct"]))
+        scored["allocation"] = scored["ticker"].map(amap).fillna("İşlem Açma")
+        scored["weight_pct"] = scored["ticker"].map(wmap).fillna(0.0)
+
+    # Shadow (aday) profil ile gölge skor
+    shadow_df = None
+    sh = state.get("meta_engine", {}).get("shadow", {}).get("profiles")
+    if isinstance(sh, dict) and sh:
+        shadow_df = score_frame(today, sh, threshold_offset=offset).sort_values("watch_score", ascending=False).head(8)
+
+    log_shock_signals(scored.head(10), regime_snapshot=regime, shadow_df=shadow_df)
+
+    ledger = load_ledger()
+    ledger = update_ledger_from_panel(ledger, panel)
+    ledger = record_ledger_entries(ledger, port, day)
+    ledger.to_csv(C.LEDGER_FILE, index=False)
+    exit_text = exit_engine_text(ledger, panel)
+
+    # app.py için günlük kesit geçmişi (120 gün)
+    hist = gecmis_veriyi_yukle()
+    snap = scored.copy()
+    snap["tarih"] = pd.Timestamp(day)
+    if not hist.empty and "tarih" in hist.columns:
+        hist = hist[pd.to_datetime(hist["tarih"], errors="coerce").dt.normalize() != pd.Timestamp(day)]
+        snap = pd.concat([hist, snap], ignore_index=True, sort=False)
+    snap["tarih"] = pd.to_datetime(snap["tarih"], errors="coerce")
+    snap = snap[snap["tarih"] >= pd.Timestamp(day) - pd.Timedelta(days=120)]
+    snap.to_csv(C.GECMIS_DOSYA, index=False)
+
+    state["last_scan"] = {"day": str(pd.Timestamp(day).date()), "regime": {k: v for k, v in regime.items() if k != "day"},
+                          "data_quality": dq, "threshold_offset": offset, "n_candidates": int(len(cands)),
+                          "n_positions": int((port["weight_pct"] > 0).sum()) if not port.empty else 0}
+    state["status"] = f"🧠 META v2 | {regime['label']} | makro {regime['macro_label']} | guard {guard.get('mode')}"
     save_ai_state(state)
 
-    df_gecmis = gecmis_veriyi_yukle()
-    df_scored = calculate_shock_scores(
-        df_current,
-        df_gecmis,
-        dynamic_thresholds=dynamic_thresholds,
-        dynamic_weights={**legacy_weights, "resilience_weight": resilience_weight},
-        market_is_crashing=market_is_crashing,
-        regime_snapshot=market_snapshot,
-        meta_profile=runtime_profile,
-    )
-
-    if df_scored.empty:
-        return
-
-    guard_log = load_signal_history()
-    guard_result = evaluate_autonomy_guard(
-        state,
-        features=df_scored,
-        regime=market_snapshot,
-        regime_confidence=float(market_snapshot.get("confidence", 0.0)),
-        performance_returns=(guard_log["realized_3d"] if "realized_3d" in guard_log.columns else None),
-        data_quality_score=100.0,
-        row_count=len(df_current),
-        min_rows=100,
-        project="bist_shock",
-    )
-    if "effective_min_score" in df_scored.columns:
-        base_effective = pd.to_numeric(
-            df_scored["effective_min_score"], errors="coerce"
-        ).fillna(float(runtime_profile.get("min_score", 75.0)))
-    else:
-        base_effective = pd.Series(
-            float(runtime_profile.get("min_score", 75.0)), index=df_scored.index, dtype=float
-        )
-    df_scored["effective_min_score"] = base_effective + float(guard_result.get("signal_threshold_add", 0.0))
-    if guard_result.get("block_new_entries"):
-        df_scored["effective_min_score"] = 101.0
-    save_ai_state(state)
-
-    shadow_df = pd.DataFrame()
-    shadow_profile = state.get("meta_engine", {}).get("shadow", {}).get("profile")
-    if isinstance(shadow_profile, dict) and shadow_profile.get("weights"):
-        shadow_runtime = dict(shadow_profile)
-        shadow_runtime["regime"] = market_snapshot["label"]
-        shadow_runtime["confidence"] = market_snapshot["confidence"]
-        shadow_df = calculate_shock_scores(
-            df_current,
-            df_gecmis,
-            dynamic_thresholds=dynamic_thresholds,
-            dynamic_weights={**legacy_weights, "resilience_weight": resilience_weight},
-            market_is_crashing=market_is_crashing,
-            regime_snapshot=market_snapshot,
-            meta_profile=shadow_runtime,
-        )
-
-    log_shock_signals(
-        df_scored.head(10),
-        regime_snapshot=market_snapshot,
-        shadow_df=shadow_df.head(8) if not shadow_df.empty else None,
-    )
-
-    print("🔍 BIST bilanço takvimi taranıyor...")
-    for idx, row in df_scored.head(20).iterrows():
-        if row["shock_score"] >= row.get("effective_min_score", 75.0):
-            has_earnings, e_date = check_bist_earnings_risk(row["ticker"])
-            if has_earnings:
-                print(f"⚠️ {row['ticker']} için BIST bilanço riski: {e_date}")
-                df_scored.at[idx, "entry_status"] = f"🚨 BİLANÇO RİSKİ ({e_date})"
-                df_scored.at[idx, "allocation"] = "İşlem Açma (%0 - Bilanço Riski)"
-                df_scored.at[idx, "stars"] = "⚠️"
-                df_scored.at[idx, "shock_score"] = 0.0
-
-    exit_signals_text = generate_exit_signals(df_current)
-    record_clean_ledger_entries(df_scored, market_is_crashing=market_is_crashing)
-
-    if not df_gecmis.empty and "tarih" in df_gecmis.columns:
-        bugun = pd.Timestamp.now().normalize()
-        df_gecmis = df_gecmis[df_gecmis["tarih"] != bugun]
-        df_yeni_gecmis = pd.concat([df_gecmis, df_scored], ignore_index=True, sort=False)
-    else:
-        df_yeni_gecmis = df_scored.copy()
-
-    if "tarih" not in df_yeni_gecmis.columns:
-        df_yeni_gecmis["tarih"] = pd.Timestamp.now().normalize()
-    df_yeni_gecmis["tarih"] = pd.to_datetime(df_yeni_gecmis["tarih"], errors="coerce")
-    limit_tarih = pd.Timestamp.now().normalize() - pd.Timedelta(days=120)
-    df_yeni_gecmis = df_yeni_gecmis[df_yeni_gecmis["tarih"] >= limit_tarih]
-    df_yeni_gecmis.to_csv(GECMIS_DOSYA, index=False)
-
-    telegram_msg = format_shock_report(
-        df_scored,
-        exit_signals_text,
-        regime_status_text,
-        market_snapshot,
-        runtime_profile,
-    )
-    send_telegram_message(telegram_msg)
-    print("Adaptive BIST Meta-Engine taraması başarıyla tamamlandı.")
-
-
-def DEFAULT_SAFE_THRESHOLDS():
-    return {"th_vol": 1.5, "th_range": 1.5, "th_flow": 2.0, "th_lambda": 1.2}
+    send_telegram_message(format_report(port, scored, regime, guard, state, dq_text, exit_text))
+    print("Tarama tamamlandı.")
 
 
 if __name__ == "__main__":

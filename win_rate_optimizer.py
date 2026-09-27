@@ -1,4 +1,12 @@
-"""Project-local Win-Rate Optimizer V1.
+"""Project-local Win-Rate Optimizer V2 (embargo + net getiri).
+
+v2 değişiklikleri:
+* Girdi artık walk-forward OOS aday havuzudur (shock_learner.walk_forward -> pool);
+  signal_score = skor - rejim eşiği + 75 olarak normalize edilir, dolayısıyla bulunan
+  "active_threshold - 75" değeri tüm rejim eşiklerine eklenen global OFSETtir.
+* realized_5d = T+1 açılış -> T+5 kapanış NET getiri (maliyet düşülmüş).
+* Eğitim ve test dilimleri arasında embargo (HORIZON+1 gün) vardır.
+
 
 Primary objective: improve out-of-sample win rate.
 Safety constraints: minimum sample, Wilson lower bound, and (when returns exist)
@@ -29,9 +37,10 @@ realized_5d = "realized_5d"
 meta_selection = "meta_selection"
 tarih = "tarih"
 
-MIN_TOTAL_SAMPLES = 60
-MIN_TRAIN_SAMPLES = 40
-MIN_TEST_SAMPLES = 20
+MIN_TOTAL_SAMPLES = 200
+MIN_TRAIN_SAMPLES = 80
+MIN_TEST_SAMPLES = 40
+EMBARGO_DAYS = 6
 MIN_TEST_WIN_LIFT = 0.02          # +2.0 percentage points
 MIN_LCB_LIFT = 0.015              # +1.5 percentage points
 MIN_PF_RATIO = 0.90               # PF cannot fall >10% vs active
@@ -119,7 +128,7 @@ def _metrics(df: pd.DataFrame, threshold: float) -> Dict:
 
 def _candidate_thresholds(current: float) -> list[float]:
     c = float(np.clip(current, 1.0, 99.0))
-    vals = [c - 8, c - 5, c - 3, c, c + 3, c + 5, c + 8]
+    vals = [c - 6, c - 4, c - 2, c, c + 2, c + 4, c + 6, c + 8]
     return sorted({round(float(np.clip(v, 1.0, 99.0)), 1) for v in vals})
 
 
@@ -149,6 +158,8 @@ def _walk_forward(df: pd.DataFrame, current_threshold: float) -> Dict:
     for i in range(1, len(chunks)):
         train_dates = np.concatenate(chunks[:i]) if i > 0 else np.array([])
         test_dates = chunks[i]
+        if len(train_dates) > EMBARGO_DAYS:
+            train_dates = train_dates[:-EMBARGO_DAYS]  # etiket örtüşmesine karşı embargo
         train = df[df[tarih].isin(train_dates)]
         test = df[df[tarih].isin(test_dates)]
         if len(train) < MIN_TRAIN_SAMPLES or len(test) < MIN_TEST_SAMPLES:
@@ -213,7 +224,7 @@ def optimize_win_rate(state: Dict, data: pd.DataFrame, *, current_threshold: Opt
     result = _walk_forward(df, current)
 
     wo = state.setdefault("win_rate_optimizer", {})
-    wo.setdefault("version", "1.0.0")
+    wo["version"] = "2.0.0"
     wo["objective"] = "MAX_OOS_WIN_RATE_WITH_RISK_CONSTRAINTS"
     wo["score_col"] = signal_score
     wo["return_col"] = realized_5d if realized_5d in (data.columns if isinstance(data, pd.DataFrame) else []) else None

@@ -1,50 +1,45 @@
+"""Öğrenme katmanı v2 — purged/embargo'lu walk-forward, rejim profilleri, canlı etiketleme.
+
+Düzeltilen mantık hataları
+--------------------------
+* Öğrenme ve doğrulama AYNI hedefi kullanır: T+1 açılış -> T+HORIZON kapanış NET getiri.
+* Eşik yalnızca EĞİTİM verisinde seçilir; test diliminde asla optimize edilmez.
+* Eğitim sonu ile test başı arasında WF_EMBARGO_DAYS boşluk vardır (örtüşen etiket sızıntısı yok).
+* IC günlük kesitsel Spearman olarak hesaplanır ve ortalanır (havuzlanmış korelasyon yanlılığı yok).
+* Anlamlılık, örtüşmeyen kohortlar (her HORIZON günde bir) üzerinden t-istatistiği ile raporlanır.
+* Canlı sinyal/defter etiketleri paneldeki KESİN tarihlerden hesaplanır; tarama kaçsa da T+5 kaymaz.
+"""
+from __future__ import annotations
+
 import json
+import math
 import os
+from datetime import datetime
 
 import numpy as np
 import pandas as pd
-from scipy.stats import spearmanr
 
-from shock_engine import (
-    DEFAULT_META_WEIGHTS,
-    DEFAULT_THRESHOLDS,
-    DEFAULT_WEIGHTS,
-    REGIME_META_TEMPLATES,
-    classify_bist_regime,
-)
+import config as C
+from shock_engine import (DEFAULT_META_WEIGHTS, FAMILY_COLS, REGIME_META_TEMPLATES, REGIME_MIN_SCORES,
+                          default_profile, default_profiles, normalize_weights, score_frame)
 
-SIGNAL_LOG_FILE = "shock_signals_log.csv"
-AI_STATE_FILE = "shock_ai_state.json"
-GECMIS_DOSYA = "gecmis_veri.csv"
-LEDGER_FILE = "backtest_ledger.csv"
-
-META_VERSION = 1
-DEFAULT_RESILIENCE_WEIGHT = 0.70
-REGIMES = tuple(REGIME_META_TEMPLATES.keys())
-REGIME_MIN_SCORES = {
-    "CRASH": 88.0,
-    "STRESS": 83.0,
-    "ROTATION": 77.0,
-    "EXPANSION": 74.0,
-    "QUIET": 72.0,
-    "NORMAL": 75.0,
-}
+AI_STATE_FILE = C.AI_STATE_FILE
+SIGNAL_LOG_FILE = C.SIGNAL_LOG_FILE
+GECMIS_DOSYA = C.GECMIS_DOSYA
+LEDGER_FILE = C.LEDGER_FILE
+META_VERSION = 2
+Z_90 = 1.2815515655446004
 
 
+# ------------------------------------------------------------------
+# Durum dosyası
+# ------------------------------------------------------------------
 def _safe_float(value, default=0.0):
     try:
         value = float(value)
         return default if not np.isfinite(value) else value
     except Exception:
         return default
-
-
-def _normalize_weights(weights, fallback):
-    out = {k: max(_safe_float((weights or {}).get(k), fallback[k]), 0.0) for k in fallback}
-    total = sum(out.values())
-    if total <= 0:
-        return dict(fallback)
-    return {k: out[k] / total for k in out}
 
 
 def load_ai_state():
@@ -58,34 +53,283 @@ def load_ai_state():
         return {}
 
 
+def _json_default(o):
+    if isinstance(o, (np.integer,)):
+        return int(o)
+    if isinstance(o, (np.floating,)):
+        return None if not np.isfinite(o) else float(o)
+    if isinstance(o, (np.bool_,)):
+        return bool(o)
+    if isinstance(o, (pd.Timestamp, datetime)):
+        return o.isoformat()
+    return str(o)
+
+
 def save_ai_state(state):
-    with open(AI_STATE_FILE, "w", encoding="utf-8") as f:
-        json.dump(state, f, indent=4, ensure_ascii=False)
+    tmp = AI_STATE_FILE + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(state, f, indent=2, ensure_ascii=False, default=_json_default)
+    os.replace(tmp, AI_STATE_FILE)
 
 
-def _default_profile(regime="NORMAL"):
-    regime = str(regime).upper()
-    return {
-        "weights": dict(REGIME_META_TEMPLATES.get(regime, DEFAULT_META_WEIGHTS)),
-        "min_score": REGIME_MIN_SCORES.get(regime, 75.0),
-        "version": META_VERSION,
-        "regime": regime,
-    }
-
-
-def _ensure_meta_state(state):
+def ensure_meta_state(state):
     meta = state.setdefault("meta_engine", {})
-    meta.setdefault("version", META_VERSION)
+    if int(_safe_float(meta.get("version"), 1)) < META_VERSION:
+        # v1 profilleri farklı hedef/özelliklerle öğrenildi; arşivlenir, v2 şablonla başlar.
+        arch = state.setdefault("archive_v1", {})
+        arch["meta_engine"] = dict(meta)
+        for k in ("win_rate_optimizer", "thresholds", "weights", "resilience_weight", "legacy_audit"):
+            if k in state:
+                arch[k] = state.pop(k)
+        meta.clear()
+    meta["version"] = META_VERSION
     meta.setdefault("regime_profiles", {})
     meta.setdefault("stable_profiles", {})
     meta.setdefault("shadow", {})
-    meta.setdefault("last_validation", {})
     meta.setdefault("promotion_count", 0)
     meta.setdefault("rollback_count", 0)
-    meta.setdefault("last_runtime", {})
     return meta
 
 
+def active_profiles(state):
+    meta = ensure_meta_state(state)
+    profs = default_profiles()
+    for r, p in (meta.get("regime_profiles") or {}).items():
+        if isinstance(p, dict) and p.get("weights"):
+            profs[r] = p
+    return profs
+
+
+# ------------------------------------------------------------------
+# Metrikler
+# ------------------------------------------------------------------
+def wilson_lower_bound(wins, n, z=Z_90):
+    if n <= 0:
+        return 0.0
+    p = wins / n
+    den = 1.0 + z * z / n
+    centre = p + z * z / (2.0 * n)
+    margin = z * math.sqrt((p * (1.0 - p) + z * z / (4.0 * n)) / n)
+    return float((centre - margin) / den)
+
+
+def trade_metrics(trades: pd.DataFrame, ret_col="net_ret") -> dict:
+    empty = {"n": 0, "wins": 0, "win_rate": 0.0, "wilson_lcb": 0.0, "profit_factor": 0.0, "avg_return": 0.0,
+             "median": 0.0, "p10": 0.0, "cohort_t": 0.0, "n_cohorts": 0, "days": 0}
+    if trades is None or trades.empty or ret_col not in trades.columns:
+        return empty
+    t = trades.dropna(subset=[ret_col])
+    ret = t[ret_col].astype(float)
+    if ret.empty:
+        return empty
+    wins = int((ret > 0).sum())
+    n = int(len(ret))
+    gains, losses = float(ret[ret > 0].sum()), float(abs(ret[ret < 0].sum()))
+    pf = gains / losses if losses > 0 else (5.0 if gains > 0 else 0.0)
+    # Örtüşmeyen kohort t-istatistiği (her HORIZON günde bir giriş kohortu)
+    daily = t.groupby("tarih")[ret_col].mean().sort_index()
+    cohorts = daily.iloc[::C.HORIZON]
+    cohort_t = 0.0
+    if len(cohorts) >= 5 and cohorts.std(ddof=1) > 0:
+        cohort_t = float(cohorts.mean() / cohorts.std(ddof=1) * math.sqrt(len(cohorts)))
+    return {"n": n, "wins": wins, "win_rate": round(wins / n * 100.0, 2),
+            "wilson_lcb": round(wilson_lower_bound(wins, n) * 100.0, 2), "profit_factor": round(pf, 3),
+            "avg_return": round(float(ret.mean()), 3), "median": round(float(ret.median()), 3),
+            "p10": round(float(ret.quantile(0.10)), 3), "cohort_t": round(cohort_t, 2),
+            "n_cohorts": int(len(cohorts)), "days": int(daily.shape[0])}
+
+
+def select_trades(scored: pd.DataFrame, top_k=C.TOP_K_PER_DAY, threshold=None) -> pd.DataFrame:
+    """Canlı ile aynı seçim: uygun + skor >= efektif eşik, her gün en iyi top_k."""
+    if scored is None or scored.empty:
+        return pd.DataFrame()
+    thr = scored["effective_min_score"] if threshold is None else threshold
+    sel = scored[scored["eligible"] & (scored["shock_score"] >= thr)]
+    if sel.empty:
+        return sel
+    sel = sel.sort_values(["tarih", "shock_score"], ascending=[True, False])
+    return sel.groupby("tarih", sort=False).head(top_k)
+
+
+# ------------------------------------------------------------------
+# Öğrenme
+# ------------------------------------------------------------------
+def daily_rank_ic(df: pd.DataFrame, col: str, target="net_ret") -> tuple[float, float, int]:
+    """Günlük kesitsel Spearman IC ortalaması, t-istatistiği, gün sayısı."""
+    d = df[["tarih", col, target]].dropna()
+    if d.empty:
+        return 0.0, 0.0, 0
+    g = d.groupby("tarih")
+    rx = g[col].rank()
+    ry = g[target].rank()
+    dx = rx - rx.groupby(d["tarih"]).transform("mean")
+    dy = ry - ry.groupby(d["tarih"]).transform("mean")
+    num = (dx * dy).groupby(d["tarih"]).sum()
+    den = np.sqrt((dx ** 2).groupby(d["tarih"]).sum() * (dy ** 2).groupby(d["tarih"]).sum())
+    cnt = d.groupby("tarih").size()
+    ic = (num / den.replace(0, np.nan))[cnt >= 8].dropna()
+    if len(ic) < 5:
+        return 0.0, 0.0, int(len(ic))
+    # Etiketler HORIZON gün örtüştüğü için etkin örneklem n/HORIZON kabul edilir
+    sd = ic.std(ddof=1)
+    t = float(ic.mean() / sd * math.sqrt(len(ic) / C.HORIZON)) if sd > 0 else 0.0
+    return float(ic.mean()), t, int(len(ic))
+
+
+def _learn_weights(train: pd.DataFrame, regime: str) -> tuple[dict, dict, int]:
+    template = REGIME_META_TEMPLATES.get(regime, DEFAULT_META_WEIGHTS)
+    pool = train[(train["regime_label"] == regime)]
+    n_days = pool["tarih"].nunique()
+    if n_days < 40:
+        pool = train
+        n_days_used = 0
+    else:
+        n_days_used = n_days
+    pool = pool[pool["current_positive"] & ~pool["is_illiquid"]]  # işlem yapılan popülasyonda IC
+    edges = {}
+    for fam, col in FAMILY_COLS.items():
+        ic, t, _ = daily_rank_ic(pool, col)
+        # Yalnızca istatistiksel olarak pozitif kenar ağırlık kazanır; aksi halde küçük taban
+        edges[fam] = max(ic, 0.0) * (1.0 if t >= 1.0 else 0.5) + 0.005
+    total = sum(edges.values())
+    learned = {k: v / total for k, v in edges.items()}
+    blend = float(np.clip((n_days_used or pool["tarih"].nunique() * 0.5) / 500.0, 0.10, 0.60))
+    w = normalize_weights({k: (1 - blend) * template[k] + blend * learned[k] for k in template}, template)
+    return {k: round(v, 4) for k, v in w.items()}, {k: round(v, 4) for k, v in edges.items()}, int(n_days_used)
+
+
+def _pick_threshold(scored_regime: pd.DataFrame, floor: float) -> tuple[float, dict | None]:
+    """Eğitimde: Wilson LCB (win-rate) maksimizasyonu; kısıt: net ort > 0, PF >= 1.05, yeterli n."""
+    best = None
+    base = scored_regime[scored_regime["eligible"]]
+    add = base["effective_min_score"] - base["_min_used"]  # makro + ofset primi
+    for th in C.THRESHOLD_GRID:
+        if th < floor:
+            continue
+        sel = base[base["shock_score"] >= th + add]
+        if sel.empty:
+            continue
+        sel = sel.sort_values(["tarih", "shock_score"], ascending=[True, False]).groupby("tarih").head(C.TOP_K_PER_DAY)
+        m = trade_metrics(sel)
+        if m["n"] < C.MIN_TRADES_FOR_THRESHOLD or m["avg_return"] <= 0 or m["profit_factor"] < 1.05:
+            continue
+        key = (m["wilson_lcb"], m["avg_return"])
+        if best is None or key > best[0]:
+            best = (key, th, m)
+    return (best[1], best[2]) if best else (None, None)
+
+
+def learn_profiles(train: pd.DataFrame) -> dict:
+    """Her rejim için ağırlık + eşik öğrenir (yalnızca eğitim verisi)."""
+    train = train[train["net_ret"].notna()]
+    profiles = {}
+    for reg in C.REGIMES:
+        w, edges, n_days = _learn_weights(train, reg)
+        profiles[reg] = {"weights": w, "min_score": REGIME_MIN_SCORES[reg], "regime": reg, "version": META_VERSION,
+                         "learned_edges": edges, "regime_days": n_days}
+    scored = score_frame(train, profiles)
+    scored["_min_used"] = scored["regime_label"].map(lambda r: profiles[r]["min_score"])
+    global_th, _ = _pick_threshold(scored, floor=min(REGIME_MIN_SCORES.values()) - 6)
+    for reg in C.REGIMES:
+        floor = REGIME_MIN_SCORES[reg] - 6.0
+        part = scored[scored["regime_label"] == reg]
+        th, m = (None, None)
+        if part["tarih"].nunique() >= 40:
+            th, m = _pick_threshold(part, floor=floor)
+        if th is None:
+            th = max(global_th, floor) if global_th is not None else REGIME_MIN_SCORES[reg]
+            profiles[reg]["threshold_source"] = "GLOBAL" if global_th is not None else "TEMPLATE"
+        else:
+            profiles[reg]["threshold_source"] = "REGIME"
+            profiles[reg]["train_metrics"] = m
+        profiles[reg]["min_score"] = float(th)
+    return profiles
+
+
+# ------------------------------------------------------------------
+# Walk-forward
+# ------------------------------------------------------------------
+def walk_forward(research: pd.DataFrame, active: dict, offset: float = 0.0) -> dict:
+    """Genişleyen pencere, embargo'lu walk-forward. Aday ÖĞRENME PROSEDÜRÜ ile aktif profili
+    aynı test dilimlerinde karşılaştırır."""
+    lab = research[research["net_ret"].notna()]
+    dates = np.array(sorted(lab["tarih"].unique()))
+    if len(dates) < C.WF_MIN_TRAIN_DAYS + C.WF_EMBARGO_DAYS + 20:
+        return {"ok": False, "reason": f"WARMUP ({len(dates)} etiketli gün)", "days": int(len(dates))}
+
+    folds, cand_tr, act_tr, tmpl_tr, pool = [], [], [], [], []
+    start = C.WF_MIN_TRAIN_DAYS + C.WF_EMBARGO_DAYS
+    tmpl = default_profiles()
+    while start < len(dates):
+        test_dates = dates[start:start + C.WF_TEST_DAYS]
+        train_dates = dates[:start - C.WF_EMBARGO_DAYS]
+        train = lab[lab["tarih"].isin(train_dates)]
+        test = research[research["tarih"].isin(test_dates)]
+        cand = learn_profiles(train)
+        sc_c = score_frame(test, cand, threshold_offset=offset)
+        sc_a = score_frame(test, active, threshold_offset=offset)
+        sc_t = score_frame(test, tmpl, threshold_offset=offset)
+        tc, ta, tt = select_trades(sc_c), select_trades(sc_a), select_trades(sc_t)
+        cand_tr.append(tc.assign(fold=len(folds)))
+        act_tr.append(ta.assign(fold=len(folds)))
+        tmpl_tr.append(tt.assign(fold=len(folds)))
+        # win-rate optimizer için eşik-altı dahil aday havuzu (marj normalize)
+        p = sc_c[sc_c["eligible"] & (sc_c["shock_score"] >= sc_c["effective_min_score"] - 10.0)].copy()
+        p = p.sort_values(["tarih", "shock_score"], ascending=[True, False]).groupby("tarih").head(15)
+        p["signal_score"] = p["shock_score"] - p["effective_min_score"] + 75.0
+        pool.append(p[["tarih", "ticker", "signal_score", "net_ret"]])
+        folds.append({"train_end": str(pd.Timestamp(train_dates[-1]).date()),
+                      "test_start": str(pd.Timestamp(test_dates[0]).date()),
+                      "test_end": str(pd.Timestamp(test_dates[-1]).date()),
+                      "candidate": trade_metrics(tc), "active": trade_metrics(ta)})
+        start += C.WF_TEST_DAYS
+
+    cat = lambda xs: pd.concat(xs, ignore_index=True) if xs else pd.DataFrame()
+    cand_all, act_all, tmpl_all = cat(cand_tr), cat(act_tr), cat(tmpl_tr)
+    oos_idx = research["tarih"].isin(cand_all["tarih"].unique()) if not cand_all.empty else research["tarih"].isin([])
+    ic_report = {}
+    oos = research[oos_idx & research["current_positive"] & ~research["is_illiquid"]]
+    for fam, col in FAMILY_COLS.items():
+        ic, t, n = daily_rank_ic(oos, col)
+        ic_report[fam] = {"ic": round(ic, 4), "t": round(t, 2), "days": n}
+    return {"ok": True, "folds": folds, "candidate": trade_metrics(cand_all), "active": trade_metrics(act_all),
+            "template": trade_metrics(tmpl_all), "ic": ic_report, "candidate_trades": cand_all,
+            "pool": cat(pool), "days": int(len(dates))}
+
+
+def promotion_decision(active_m: dict, cand_m: dict) -> tuple[bool, str]:
+    if cand_m["n"] < C.PROMOTION_MIN_OOS_TRADES:
+        return False, f"OOS örneklem yetersiz (n={cand_m['n']})"
+    lcb_lift = cand_m["wilson_lcb"] - active_m["wilson_lcb"]
+    avg_lift = cand_m["avg_return"] - active_m["avg_return"]
+    if cand_m["avg_return"] <= 0 or cand_m["profit_factor"] < 1.05:
+        return False, f"Aday mutlak tabanı geçemedi (ort {cand_m['avg_return']:+.2f}, PF {cand_m['profit_factor']:.2f})"
+    if active_m["n"] >= C.PROMOTION_MIN_OOS_TRADES and cand_m["profit_factor"] < 0.95 * active_m["profit_factor"]:
+        return False, f"PF bozulması ({cand_m['profit_factor']:.2f} vs {active_m['profit_factor']:.2f})"
+    improve = (lcb_lift >= C.PROMOTION_MIN_LCB_LIFT and avg_lift >= -0.05) or \
+              (avg_lift >= C.PROMOTION_MIN_AVG_LIFT and lcb_lift >= -1.0)
+    note = f"LCB fark {lcb_lift:+.2f}pp | Net ort fark {avg_lift:+.2f} | t={cand_m['cohort_t']:.2f}"
+    if active_m["n"] < C.PROMOTION_MIN_OOS_TRADES:
+        return True, "Aktif profil OOS'ta yetersiz işlem üretti; aday tabanı geçti | " + note
+    return bool(improve), note
+
+
+def live_rollback_needed(ledger: pd.DataFrame) -> tuple[bool, dict]:
+    if ledger is None or ledger.empty or "net_ret_5d" not in ledger.columns:
+        return False, {}
+    done = ledger[pd.to_numeric(ledger["net_ret_5d"], errors="coerce").notna()].copy()
+    done["tarih"] = pd.to_datetime(done.get("date"), errors="coerce")
+    done["net_ret"] = pd.to_numeric(done["net_ret_5d"], errors="coerce")
+    done = done.sort_values("tarih").tail(C.LIVE_ROLLBACK_MIN_TRADES * 2)
+    m = trade_metrics(done)
+    if m["n"] < C.LIVE_ROLLBACK_MIN_TRADES:
+        return False, m
+    return bool(m["profit_factor"] < 0.80 or (m["wilson_lcb"] < 35.0 and m["avg_return"] < -0.5)), m
+
+
+# ------------------------------------------------------------------
+# Canlı sinyal logu ve etiketleme (kesin tarihlerle)
+# ------------------------------------------------------------------
 def load_signal_history():
     if not os.path.exists(SIGNAL_LOG_FILE):
         return pd.DataFrame()
@@ -98,455 +342,106 @@ def load_signal_history():
         return pd.DataFrame()
 
 
-def _ensure_columns(df, columns):
-    for col in columns:
-        if col not in df.columns:
-            df[col] = np.nan
-    return df
+LOG_COLS = ["tarih", "ticker", "close", "shock_score", "watch_score", "meta_score", "risk_adjusted_score",
+            "effective_min_score", "z_vol", "z_range", "z_flow", "z_lambda", "cmf20", "resilience_score",
+            "excess_return", "rel_1m_pct", "rel_3m_pct", "trend_persistence", "event_score", "flow_score",
+            "activity_score", "liquidity_score", "non_price_score", "overnight_risk", "liq20", "volatility",
+            "current_positive", "crash_resilient", "crash_survivor", "meta_regime", "meta_regime_confidence",
+            "macro_label", "macro_stress", "meta_selection", "weight_pct"]
 
 
 def log_shock_signals(top_df, regime_snapshot=None, shadow_df=None):
-    """Log active/union candidates so the learner gets an auditable training set."""
     if top_df is None or top_df.empty:
         return
+    frames = [top_df.assign(model_variant="active", signal_score=top_df["shock_score"])]
+    if shadow_df is not None and not shadow_df.empty:
+        frames.append(shadow_df.assign(model_variant="shadow", signal_score=shadow_df["watch_score"]))
+    sig = pd.concat(frames, ignore_index=True, sort=False)
+    for col in LOG_COLS:
+        if col not in sig.columns:
+            sig[col] = np.nan
+    sig = sig[LOG_COLS + ["model_variant", "signal_score"]].copy()
+    sig["tarih"] = pd.to_datetime(sig["tarih"]).dt.normalize()
+    rs = regime_snapshot or {}
+    sig["regime_label"] = rs.get("label", "NORMAL")
+    sig["regime_confidence"] = _safe_float(rs.get("confidence"), 0.35)
+    sig["label_version"] = 2
+    for c in ("entry_price", "realized_1d", "realized_3d", "realized_5d", "gross_5d", "cost_rt"):
+        sig[c] = np.nan
 
-    regime_snapshot = regime_snapshot or {}
-    shadow_df = shadow_df if shadow_df is not None else pd.DataFrame()
-
-    cols = [
-        "ticker", "close", "shock_score", "watch_score", "meta_score", "risk_adjusted_score",
-        "z_vol", "z_range", "z_flow", "z_lambda", "resilience_score", "excess_return",
-        "rel_1m_pct", "rel_3m_pct", "trend_persistence", "flow_score", "activity_score",
-        "liquidity_score", "non_price_score", "overnight_risk", "current_positive",
-        "directional_flow_ok", "crash_resilient", "crash_survivor", "extended_but_supported",
-        "meta_regime", "meta_regime_confidence", "meta_selection", "tarih",
-    ]
-
-    active = top_df.copy()
-    if "tarih" not in active.columns:
-        active["tarih"] = pd.Timestamp.now().normalize()
-    active["model_variant"] = "active"
-    active["signal_score"] = pd.to_numeric(active.get("shock_score", 0.0), errors="coerce")
-
-    frames = [active]
-    if not shadow_df.empty:
-        shadow = shadow_df.copy()
-        if "tarih" not in shadow.columns:
-            shadow["tarih"] = pd.Timestamp.now().normalize()
-        shadow["model_variant"] = "shadow"
-        shadow["signal_score"] = pd.to_numeric(
-            shadow.get("watch_score", shadow.get("meta_score", 0.0)), errors="coerce"
-        )
-        frames.append(shadow)
-
-    signals = pd.concat(frames, ignore_index=True, sort=False)
-    signals = signals.sort_values("signal_score", ascending=False).head(15)
-    signals = _ensure_columns(signals, cols)
-    signals = signals[cols + ["model_variant", "signal_score"]].copy()
-    signals["regime_label"] = str(regime_snapshot.get("label", "NORMAL"))
-    signals["regime_confidence"] = _safe_float(regime_snapshot.get("confidence"), 0.35)
-    signals["realized_3d"] = np.nan
-    signals["realized_5d"] = np.nan
-
-    history_df = load_signal_history()
-    today_val = pd.Timestamp.now().normalize()
-    if not history_df.empty:
-        history_df = _ensure_columns(history_df, signals.columns.tolist())
-        history_df = history_df[
-            pd.to_datetime(history_df["tarih"], errors="coerce").dt.normalize() != today_val
-        ]
-        updated = pd.concat([history_df, signals], ignore_index=True, sort=False)
-    else:
-        updated = signals
-
-    updated.to_csv(SIGNAL_LOG_FILE, index=False)
+    hist = load_signal_history()
+    day = sig["tarih"].iloc[0]
+    if not hist.empty:
+        hist = hist[pd.to_datetime(hist["tarih"], errors="coerce").dt.normalize() != day]
+        sig = pd.concat([hist, sig], ignore_index=True, sort=False)
+    sig.to_csv(SIGNAL_LOG_FILE, index=False)
 
 
-def _trading_days_from_history(today):
-    dates = []
-    if os.path.exists(GECMIS_DOSYA):
-        try:
-            h = pd.read_csv(GECMIS_DOSYA, usecols=["tarih"])
-            dates = pd.to_datetime(h["tarih"], errors="coerce").dropna().dt.normalize().drop_duplicates().sort_values().tolist()
-        except Exception:
-            dates = []
-    today = pd.Timestamp(today).normalize()
-    if today not in dates:
-        dates.append(today)
-    return sorted(set(dates))
-
-
-def _trading_days_passed(sig_date, today):
-    sig_date = pd.Timestamp(sig_date).normalize()
-    today = pd.Timestamp(today).normalize()
-    if today <= sig_date:
-        return 0
-    dates = _trading_days_from_history(today)
-    dates = [d for d in dates if sig_date <= d <= today]
-    if len(dates) >= 2:
-        return max(len(dates) - 1, 0)
-    return int(np.busday_count(sig_date.date(), today.date()))
-
-
-def update_realized_shock_returns(current_market_df):
-    history_df = load_signal_history()
-    if history_df.empty or current_market_df is None or current_market_df.empty:
-        return history_df
-
-    price_map = dict(zip(current_market_df["ticker"], current_market_df["close"]))
-    today = pd.Timestamp.now().normalize()
-    history_df = _ensure_columns(history_df, ["realized_3d", "realized_5d"])
-
-    for idx, row in history_df.iterrows():
-        sig_date = pd.to_datetime(row.get("tarih"), errors="coerce")
-        if pd.isna(sig_date):
+def _label_rows(df, date_col, ticker_col, panel, liq_col=None):
+    """Her satır için panelden kesin T+1 açılış ve T+k kapanışları (k=1,3,HORIZON)."""
+    if df.empty or panel is None or panel.empty:
+        return {}
+    cal = pd.DatetimeIndex(sorted(pd.to_datetime(panel["tarih"].unique())))
+    px = panel.set_index(["tarih", "ticker"])[["open", "close"]]
+    res = {}
+    for idx, row in df.iterrows():
+        d = pd.Timestamp(row[date_col]).normalize() if pd.notna(row[date_col]) else None
+        t = row[ticker_col]
+        if d is None:
             continue
-        ticker = row.get("ticker")
-        entry_price = _safe_float(row.get("close"), 0.0)
-        if ticker not in price_map or entry_price <= 0:
-            continue
-
-        days_passed = _trading_days_passed(sig_date, today)
-        current_price = _safe_float(price_map[ticker], 0.0)
-        if current_price <= 0:
-            continue
-
-        gain = ((current_price - entry_price) / entry_price) * 100.0
-        if days_passed >= 3 and pd.isna(history_df.at[idx, "realized_3d"]):
-            history_df.at[idx, "realized_3d"] = round(gain, 2)
-        if days_passed >= 5 and pd.isna(history_df.at[idx, "realized_5d"]):
-            history_df.at[idx, "realized_5d"] = round(gain, 2)
-
-    history_df.to_csv(SIGNAL_LOG_FILE, index=False)
-    return history_df
-
-
-def compute_dynamic_market_thresholds(df):
-    if df is None or df.empty:
-        return dict(DEFAULT_THRESHOLDS)
-
-    def percentile(column, fallback):
-        if column not in df.columns:
-            return fallback
-        s = pd.to_numeric(df[column], errors="coerce").dropna()
-        return float(np.percentile(s, 85)) if not s.empty else fallback
-
-    return {
-        "th_vol": round(max(percentile("z_vol", 1.5), 1.2), 2),
-        "th_range": round(max(percentile("z_range", 1.5), 1.0), 2),
-        "th_flow": round(max(percentile("z_flow", 2.0), 1.5), 2),
-        "th_lambda": round(max(percentile("z_lambda", 1.2), 0.5), 2),
-    }
+        pos = int(cal.searchsorted(d, side="right"))  # T+1 indeksi
+        out = {}
+        if pos < len(cal) and (cal[pos], t) in px.index:
+            entry = float(px.loc[(cal[pos], t), "open"])
+            if entry > 0:
+                out["entry_date"] = pd.Timestamp(cal[pos]).strftime("%Y-%m-%d")
+                out["entry_price"] = round(entry, 4)
+                liq = _safe_float(row.get(liq_col), C.MIN_LIQ_TL) if liq_col else C.MIN_LIQ_TL
+                out["cost_rt"] = round(float(C.round_trip_cost_pct(liq)), 3)
+                for k in (1, 3, C.HORIZON):
+                    j = pos + k - 1
+                    if j < len(cal) and (cal[j], t) in px.index:
+                        cl = float(px.loc[(cal[j], t), "close"])
+                        out[f"close_d{k}"] = round(cl, 4)
+                        out[f"gross_d{k}"] = round((cl / entry - 1.0) * 100.0, 3)
+                        if k == C.HORIZON:
+                            out["exit_date"] = pd.Timestamp(cal[j]).strftime("%Y-%m-%d")
+        res[idx] = out
+    return res
 
 
-def calibrate_adaptive_weights():
-    """Legacy factor calibration retained for backward compatibility."""
-    history_df = load_signal_history()
-    if history_df.empty or "realized_3d" not in history_df.columns:
-        return dict(DEFAULT_WEIGHTS), "🕒 ÖĞRENME EVRESİNDE (Örneklem Bekleniyor)"
-
-    valid = history_df.dropna(subset=["realized_3d"]).copy()
-    if len(valid) < 20:
-        return dict(DEFAULT_WEIGHTS), f"🕒 ÖĞRENME EVRESİNDE ({len(valid)}/20)"
-
-    factors = ["z_vol", "z_flow", "z_range", "z_lambda"]
-    y = pd.to_numeric(valid["realized_3d"], errors="coerce").values
-    ic_scores = {}
-    for factor in factors:
-        x = pd.to_numeric(valid.get(factor, np.nan), errors="coerce").values
-        mask = np.isfinite(x) & np.isfinite(y)
-        if mask.sum() >= 10 and np.std(x[mask]) > 0 and np.std(y[mask]) > 0:
-            corr, _ = spearmanr(x[mask], y[mask])
-            ic_scores[factor] = max(float(corr) if np.isfinite(corr) else 0.0, 0.0)
-        else:
-            ic_scores[factor] = 0.05
-
-    total = sum(ic_scores.values())
-    if total <= 0:
-        return dict(DEFAULT_WEIGHTS), "🕒 GEÇERLİ IC YOK"
-
-    raw = {
-        "vol": ic_scores["z_vol"] / total,
-        "flow": ic_scores["z_flow"] / total,
-        "range": ic_scores["z_range"] / total,
-        "lambda": ic_scores["z_lambda"] / total,
-    }
-    final = {k: 0.70 * DEFAULT_WEIGHTS[k] + 0.30 * raw[k] for k in DEFAULT_WEIGHTS}
-    final = _normalize_weights(final, DEFAULT_WEIGHTS)
-    return {k: round(v, 4) for k, v in final.items()}, f"🧠 LEGACY FACTOR LEARNING (N={len(valid)})"
+def update_realized_shock_returns(panel):
+    """Sinyal logundaki v2 satırlarını panelden kesin tarihlerle etiketler."""
+    hist = load_signal_history()
+    if hist.empty or panel is None or panel.empty:
+        return hist
+    if "label_version" not in hist.columns:
+        hist["label_version"] = 1
+    for c in ("entry_price", "realized_1d", "realized_3d", "realized_5d", "gross_5d", "cost_rt"):
+        if c not in hist.columns:
+            hist[c] = np.nan
+    todo = hist[(hist["label_version"] == 2) & hist["realized_5d"].isna()]
+    labels = _label_rows(todo, "tarih", "ticker", panel, liq_col="liq20")
+    for idx, lab in labels.items():
+        if "entry_price" in lab:
+            hist.at[idx, "entry_price"] = lab["entry_price"]
+            hist.at[idx, "cost_rt"] = lab["cost_rt"]
+        for k, col in ((1, "realized_1d"), (3, "realized_3d")):
+            if f"gross_d{k}" in lab:
+                hist.at[idx, col] = lab[f"gross_d{k}"]
+        if f"gross_d{C.HORIZON}" in lab:
+            hist.at[idx, "gross_5d"] = lab[f"gross_d{C.HORIZON}"]
+            hist.at[idx, "realized_5d"] = round(lab[f"gross_d{C.HORIZON}"] - lab["cost_rt"], 3)
+    hist.to_csv(SIGNAL_LOG_FILE, index=False)
+    return hist
 
 
-def calibrate_resilience_weight(default=DEFAULT_RESILIENCE_WEIGHT):
-    history_df = load_signal_history()
-    required = ["realized_3d", "resilience_score"]
-    if history_df.empty or any(c not in history_df.columns for c in required):
-        return float(default), "🛡️ RESILIENCE AĞIRLIĞI: VARSAYILAN"
-
-    valid = history_df.dropna(subset=required).copy()
-    if len(valid) < 25:
-        return float(default), f"🛡️ RESILIENCE AĞIRLIĞI: ÖRNEKLEM BEKLENİYOR ({len(valid)}/25)"
-
-    x = pd.to_numeric(valid["resilience_score"], errors="coerce").values
-    y = pd.to_numeric(valid["realized_3d"], errors="coerce").values
-    mask = np.isfinite(x) & np.isfinite(y)
-    if mask.sum() < 25 or np.std(x[mask]) == 0 or np.std(y[mask]) == 0:
-        return float(default), "🛡️ RESILIENCE AĞIRLIĞI: VARSAYILAN"
-
-    corr, _ = spearmanr(x[mask], y[mask])
-    corr = float(corr) if np.isfinite(corr) else 0.0
-    weight = float(np.clip(0.68 + 0.12 * np.clip(corr, -0.5, 0.5), 0.55, 0.80))
-    return round(weight, 3), f"🛡️ RESILIENCE AĞIRLIĞI: {weight:.3f} (Spearman {corr:+.3f})"
-
-
-def _prepare_historical_frame(df_history):
-    if df_history is None or df_history.empty:
-        return pd.DataFrame()
-
-    df = df_history.copy()
-    df["tarih"] = pd.to_datetime(df.get("tarih"), errors="coerce").dt.normalize()
-    df = df.dropna(subset=["tarih", "ticker", "close"]).copy()
-    df = df.sort_values(["ticker", "tarih"]).reset_index(drop=True)
-
-    numeric_defaults = {
-        "change_%": 0.0, "z_vol": 0.0, "z_range": 0.0, "z_flow": 0.0,
-        "z_lambda": 0.0, "rvol": 1.0, "value_traded": 0.0,
-        "perf_1m": 0.0, "perf_3m": 0.0, "volatility": 2.0,
-        "high": np.nan, "low": np.nan, "close": np.nan,
-    }
-    for col, default in numeric_defaults.items():
-        if col not in df.columns:
-            df[col] = default
-        df[col] = pd.to_numeric(df[col], errors="coerce").fillna(default)
-
-    # Forward returns are labels only; they are never fed into a live score.
-    df["future_ret_3d"] = df.groupby("ticker")["close"].shift(-3)
-    df["future_ret_5d"] = df.groupby("ticker")["close"].shift(-5)
-    df["future_ret_3d"] = (df["future_ret_3d"] / df["close"] - 1.0) * 100.0
-    df["future_ret_5d"] = (df["future_ret_5d"] / df["close"] - 1.0) * 100.0
-
-    def pct(col):
-        return df.groupby("tarih")[col].rank(pct=True, method="average").fillna(0.5) * 100.0
-
-    df["f_flow"] = pct("z_flow")
-    df["f_activity"] = pct("rvol") * 0.60 + pct("z_vol") * 0.40
-    df["f_liquidity"] = pct("value_traded")
-    df["f_event"] = pct("z_range") * 0.35 + pct("z_lambda") * 0.30 + pct("z_vol") * 0.20 + pct("rvol") * 0.15
-
-    high = df["high"].fillna(df["close"])
-    low = df["low"].fillna(df["close"])
-    close = df["close"]
-    day_range = (high - low).replace(0.0, np.nan)
-    close_location = (((close - low) / day_range) * 100.0).replace([np.inf, -np.inf], np.nan).fillna(50.0).clip(0.0, 100.0)
-
-    rel_daily = pct("change_%")
-    rel_1m = pct("perf_1m")
-    rel_3m = pct("perf_3m")
-    rel_rvol = pct("rvol")
-    rel_flow = pct("z_flow")
-    excess = df["change_%"] - df.groupby("tarih")["change_%"].transform("median")
-    excess_pct = excess.groupby(df["tarih"]).rank(pct=True, method="average").fillna(0.5) * 100.0
-    trend_persistence = rel_1m * 0.45 + rel_3m * 0.55
-
-    df["f_resilience"] = (
-        rel_daily * 0.30 + excess_pct * 0.15 + trend_persistence * 0.10
-        + rel_rvol * 0.10 + rel_flow * 0.10 + close_location * 0.10 + rel_3m * 0.15
-    )
-
-    df["risk_proxy"] = np.clip(
-        pct("volatility") * 0.25
-        + pct("z_range") * 0.20
-        + (100.0 - df["f_liquidity"]) * 0.25
-        + (100.0 - df["f_flow"]) * 0.20
-        + (100.0 - pct("rvol")) * 0.10,
-        0.0,
-        100.0,
-    )
-
-    regime_rows = []
-    for date, group in df.groupby("tarih", sort=True):
-        snapshot = classify_bist_regime(group)
-        regime_rows.append((date, snapshot["label"], snapshot["confidence"]))
-    regime_map = {d: (r, c) for d, r, c in regime_rows}
-    df["regime_label"] = df["tarih"].map(lambda x: regime_map.get(x, ("NORMAL", 0.35))[0])
-    df["regime_confidence"] = df["tarih"].map(lambda x: regime_map.get(x, ("NORMAL", 0.35))[1])
-    return df
-
-
-def prepare_historical_frame(df_history):
-    return _prepare_historical_frame(df_history)
-
-
-def score_profile_frame(df, profile):
-    if df is None or df.empty:
-        return pd.Series(dtype=float)
-    weights = _normalize_weights(profile.get("weights", {}), DEFAULT_META_WEIGHTS)
-    score = (
-        df["f_event"] * weights["event"]
-        + df["f_flow"] * weights["flow"]
-        + df["f_activity"] * weights["activity"]
-        + df["f_liquidity"] * weights["liquidity"]
-        + df["f_resilience"] * weights["resilience"]
-    )
-    score = score - np.clip((df["risk_proxy"] - 65.0) * 0.18, 0.0, 10.0)
-    score = score.clip(0.0, 99.5)
-    return score
-
-
-def evaluate_profile(df, profile, min_samples=20, target="future_ret_3d"):
-    if df is None or df.empty:
-        return {"n": 0, "win_rate": 0.0, "profit_factor": 0.0, "avg_return": 0.0, "p10": 0.0, "median": 0.0, "score": -999.0}
-
-    data = df.copy()
-    data["profile_score"] = score_profile_frame(data, profile)
-    threshold = _safe_float(profile.get("min_score"), 75.0)
-    selected = data[
-        (data["profile_score"] >= threshold)
-        & (data["change_%"] > 0.0)
-        & (data["value_traded"] >= 25_000_000.0)
-        & (data[target].notna())
-    ].copy()
-    ret = pd.to_numeric(selected[target], errors="coerce").dropna()
-    if len(ret) < min_samples:
-        return {"n": int(len(ret)), "win_rate": float((ret > 0).mean() * 100.0) if len(ret) else 0.0, "profit_factor": 0.0, "avg_return": float(ret.mean()) if len(ret) else 0.0, "p10": float(ret.quantile(0.10)) if len(ret) else 0.0, "median": float(ret.median()) if len(ret) else 0.0, "score": -999.0}
-
-    gains = ret[ret > 0].sum()
-    losses = abs(ret[ret < 0].sum())
-    pf = float(gains / losses) if losses > 0 else 5.0
-    wr = float((ret > 0).mean() * 100.0)
-    avg = float(ret.mean())
-    p10 = float(ret.quantile(0.10))
-    median = float(ret.median())
-    sample_factor = min(len(ret) / 40.0, 1.0)
-    metric_score = (avg * 0.45 + np.log1p(pf) * 2.4 + wr * 0.018 + p10 * 0.08) * sample_factor
-    return {
-        "n": int(len(ret)),
-        "win_rate": wr,
-        "profit_factor": pf,
-        "avg_return": avg,
-        "p10": p10,
-        "median": median,
-        "score": float(metric_score),
-    }
-
-
-def optimize_profile_threshold(df, profile, target="future_ret_3d"):
-    if df is None or df.empty:
-        return _safe_float(profile.get("min_score"), 75.0)
-    best = None
-    for threshold in np.arange(68.0, 93.0, 2.0):
-        candidate = dict(profile)
-        candidate["min_score"] = float(threshold)
-        metrics = evaluate_profile(df, candidate, min_samples=15, target=target)
-        if metrics["n"] < 15:
-            continue
-        item = {"threshold": float(threshold), **metrics}
-        if best is None or item["score"] > best["score"]:
-            best = item
-    return round(best["threshold"], 1) if best else _safe_float(profile.get("min_score"), 75.0)
-
-
-def learn_meta_candidate(training_df, current_regime):
-    regime = str(current_regime).upper()
-    base = _default_profile(regime)
-    if training_df is None or training_df.empty:
-        base["learning_status"] = "NO_DATA"
-        return base
-
-    regime_df = training_df[
-        (training_df["regime_label"] == regime) & training_df["future_ret_3d"].notna()
-    ].copy()
-    if len(regime_df) < 120:
-        regime_df = training_df[training_df["future_ret_3d"].notna()].copy()
-
-    factor_cols = {
-        "event": "f_event",
-        "flow": "f_flow",
-        "activity": "f_activity",
-        "liquidity": "f_liquidity",
-        "resilience": "f_resilience",
-    }
-    y = pd.to_numeric(regime_df["future_ret_3d"], errors="coerce").values
-    edges = {}
-    for family, col in factor_cols.items():
-        x = pd.to_numeric(regime_df[col], errors="coerce").values
-        mask = np.isfinite(x) & np.isfinite(y)
-        if mask.sum() >= 40 and np.std(x[mask]) > 0 and np.std(y[mask]) > 0:
-            corr, _ = spearmanr(x[mask], y[mask])
-            corr = float(corr) if np.isfinite(corr) else 0.0
-        else:
-            corr = 0.0
-        edges[family] = max(corr, 0.02)
-
-    total = sum(edges.values())
-    learned = {k: edges[k] / total for k in edges}
-    n = len(regime_df)
-    learned_blend = 0.15 if n < 250 else (0.25 if n < 600 else 0.35)
-
-    final = {
-        k: (1.0 - learned_blend) * base["weights"][k] + learned_blend * learned[k]
-        for k in DEFAULT_META_WEIGHTS
-    }
-    final = _normalize_weights(final, base["weights"])
-    base["weights"] = {k: round(v, 4) for k, v in final.items()}
-    optimized_threshold = optimize_profile_threshold(regime_df, base, target="future_ret_3d")
-    base["min_score"] = max(float(optimized_threshold), REGIME_MIN_SCORES.get(regime, 75.0))
-    base["training_samples"] = int(n)
-    base["learned_edges"] = {k: round(v, 4) for k, v in edges.items()}
-    base["learning_status"] = "LEARNED"
-    return base
-
-
-def split_training_validation(history_df, validation_days=3, forward_days=3):
-    df = prepare_historical_frame(history_df)
-    if df.empty:
-        return pd.DataFrame(), pd.DataFrame(), []
-
-    dates = sorted(df["tarih"].dropna().unique())
-    if len(dates) <= validation_days + forward_days + 2:
-        return df.iloc[0:0].copy(), df.iloc[0:0].copy(), dates
-
-    validation_start_index = len(dates) - forward_days - validation_days
-    train_end_index = max(validation_start_index - forward_days, 0)
-    train_dates = dates[:train_end_index]
-    validation_dates = dates[validation_start_index:]
-    train = df[df["tarih"].isin(train_dates)].copy()
-    validation = df[df["tarih"].isin(validation_dates)].copy()
-    validation = validation[validation["future_ret_5d"].notna()].copy()
-    return train, validation, validation_dates
-
-
+# ------------------------------------------------------------------
+# Geriye uyumlu küçük yardımcılar
+# ------------------------------------------------------------------
 def build_runtime_meta_profile(regime_snapshot, state=None):
     state = state if isinstance(state, dict) else load_ai_state()
-    meta = _ensure_meta_state(state)
-    regime = str(regime_snapshot.get("label", "NORMAL")).upper()
-    confidence = float(np.clip(_safe_float(regime_snapshot.get("confidence"), 0.35), 0.0, 1.0))
-
-    stored = meta.get("regime_profiles", {}).get(regime)
-    if not isinstance(stored, dict):
-        stored = _default_profile(regime)
-
-    template = REGIME_META_TEMPLATES.get(regime, DEFAULT_META_WEIGHTS)
-    learned = _normalize_weights(stored.get("weights", {}), template)
-    blend = 0.25 + 0.55 * confidence
-    runtime_weights = {
-        k: (1.0 - blend) * learned[k] + blend * template[k]
-        for k in DEFAULT_META_WEIGHTS
-    }
-    runtime_weights = _normalize_weights(runtime_weights, template)
-
-    min_score = _safe_float(stored.get("min_score"), REGIME_MIN_SCORES.get(regime, 75.0))
-    meta["last_runtime"] = {
-        "regime": regime,
-        "confidence": round(confidence, 3),
-        "weights": {k: round(v, 4) for k, v in runtime_weights.items()},
-        "min_score": round(min_score, 1),
-    }
-
-    return {
-        "version": META_VERSION,
-        "regime": regime,
-        "confidence": round(confidence, 3),
-        "weights": {k: round(v, 4) for k, v in runtime_weights.items()},
-        "min_score": round(min_score, 1),
-        "source": "REGIME_PROFILE+LIVE_REGIME_BLEND",
-    }
+    regime = str((regime_snapshot or {}).get("label", "NORMAL")).upper()
+    prof = active_profiles(state).get(regime, default_profile(regime))
+    return {"version": META_VERSION, "regime": regime, "weights": prof.get("weights"),
+            "min_score": prof.get("min_score"), "source": "REGIME_PROFILE_v2"}
