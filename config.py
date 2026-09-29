@@ -129,3 +129,14 @@ CLUSTER_LOOKBACK = 250              # küme kurulumunda kullanılan geçmiş gü
 CLUSTER_K = 16                      # en fazla küme sayısı
 CLUSTER_MIN_OBS = 150
 MIN_GROUP_SIZE = 4                  # bu sayıdan küçük gruplarda sektör özellikleri nötr (50)
+
+# ------------------------------------------------------------------
+# Sunum (Telegram + panel) ve terfi güveni
+# ------------------------------------------------------------------
+PROJECT_TITLE = "BIST Meta-Engine"
+PROJECT_ICON = "🇹🇷"
+CCY = "₺"
+CLOSE_TEXT = "BIST kapanış"
+PROMOTION_MIN_T = 1.0               # aday OOS kohort t-istatistiği en az bu olmalı (şansa bağlı terfiyi önler)
+HISTORY_MODULE = "bist_history"            # panelin fiyat grafiği için
+META_MIN_T = 0.5                    # olasılık filtresinin devreye girmesi için en düşük OOS t

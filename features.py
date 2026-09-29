@@ -140,8 +140,12 @@ def build_features(panel: pd.DataFrame, with_labels: bool = True) -> pd.DataFram
     df["is_illiquid"] = df["liq20"].fillna(0.0) < C.MIN_LIQ_TL
     df["current_positive"] = df["change_%"] > 0.0
     df["directional_flow_ok"] = df["flow_score"] >= C.MIN_FLOW_SCORE
-    df["eligible"] = (df["current_positive"] & df["directional_flow_ok"] & ~df["is_downtrend_knife"]
-                      & ~df["is_illiquid"] & (df["overnight_risk"] < C.MAX_OVERNIGHT_RISK))
+    # eligible_any: yön kapısı OLMADAN uygunluk; eligible: + "yükselen gün" kapısı.
+    # Hangisinin kullanılacağını öğrenici profil["gate"] ile seçer (BIST gerçek veride: zayıflıkta
+    # birikim yapan hisseler daha iyi; kapı sabit kodlanınca kenar kayboluyordu).
+    df["eligible_any"] = (df["directional_flow_ok"] & ~df["is_downtrend_knife"]
+                          & ~df["is_illiquid"] & (df["overnight_risk"] < C.MAX_OVERNIGHT_RISK))
+    df["eligible"] = df["eligible_any"] & df["current_positive"]
     df = add_sector_features(df, c)          # sektör/grup akış katmanı (point-in-time kümeler)
     num = df.select_dtypes(include=[np.number]).columns
     df[num] = df[num].replace([np.inf, -np.inf], np.nan)
