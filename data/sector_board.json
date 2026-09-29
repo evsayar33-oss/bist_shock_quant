@@ -1,0 +1,98 @@
+[
+ {
+  "grp":2.0,
+  "n":75,
+  "sec_cmf":-0.0090148263,
+  "sec_acc":0.0,
+  "sec_ret5":3.8807019788,
+  "sec_ret20":16.1633653715,
+  "score":76.338028169,
+  "name":"THYAO, AKBNK, YKBNK",
+  "stealth":0.07,
+  "side":"GÖRECE GÜÇLÜ"
+ },
+ {
+  "grp":1.0,
+  "n":11,
+  "sec_cmf":-0.1700759569,
+  "sec_acc":0.0909090909,
+  "sec_ret5":4.6280771873,
+  "sec_ret20":0.1414541276,
+  "score":65.6983568075,
+  "name":"EREGL, KRDMD, KRDMA",
+  "stealth":-0.33,
+  "side":"GÖRECE GÜÇLÜ"
+ },
+ {
+  "grp":16.0,
+  "n":24,
+  "sec_cmf":-0.1656354323,
+  "sec_acc":0.0,
+  "sec_ret5":2.4530754406,
+  "sec_ret20":11.00007895,
+  "score":63.7617370892,
+  "name":"TUPRS, PETKM, RYSAS",
+  "stealth":-0.07,
+  "side":"GÖRECE GÜÇLÜ"
+ },
+ {
+  "grp":10.0,
+  "n":20,
+  "sec_cmf":-0.1223948753,
+  "sec_acc":0.0,
+  "sec_ret5":2.1575535032,
+  "sec_ret20":-3.6192311662,
+  "score":63.1161971831,
+  "name":"ECILC, DOFRB, GMTAS",
+  "stealth":0.2,
+  "side":"GÖRECE GÜÇLÜ"
+ },
+ {
+  "grp":15.0,
+  "n":14,
+  "sec_cmf":-0.1613739812,
+  "sec_acc":0.0,
+  "sec_ret5":1.3883492573,
+  "sec_ret20":1.7076422895,
+  "score":58.1514084507,
+  "name":"KUYAS, CVKMD, OBAMS",
+  "stealth":0.13,
+  "side":"GÖRECE GÜÇLÜ"
+ },
+ {
+  "grp":14.0,
+  "n":16,
+  "sec_cmf":-0.2200573153,
+  "sec_acc":0.0,
+  "sec_ret5":-1.0398742143,
+  "sec_ret20":-7.3637731869,
+  "score":26.4964788732,
+  "name":"DMRGD, GIPTA, GRTHO",
+  "stealth":-0.2,
+  "side":"DAĞITIM"
+ },
+ {
+  "grp":9.0,
+  "n":11,
+  "sec_cmf":-0.2827126109,
+  "sec_acc":0.0909090909,
+  "sec_ret5":-4.4385340786,
+  "sec_ret20":-11.8927958402,
+  "score":26.073943662,
+  "name":"EFOR, BULGS, AKFGY",
+  "stealth":0.0,
+  "side":"DAĞITIM"
+ },
+ {
+  "grp":4.0,
+  "n":23,
+  "sec_cmf":-0.267175461,
+  "sec_acc":0.0,
+  "sec_ret5":-1.6067992783,
+  "sec_ret20":-7.5126332171,
+  "score":16.2676056338,
+  "name":"CWENE, BINHO, CEMZY",
+  "stealth":-0.2,
+  "side":"DAĞITIM"
+ }
+]
