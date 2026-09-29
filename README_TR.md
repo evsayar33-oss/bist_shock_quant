@@ -43,6 +43,7 @@ Ek olarak:
 | `config.py` | Tüm sabitler: ufuk, maliyet, filtreler, walk-forward, portföy |
 | `bist_history.py` | Panel (backfill, artımlı güncelleme, bölünme tespiti) + makro |
 | `features.py` | Özellikler, aile skorları, net etiketler, tarih bazlı rejim |
+| `sector_flow.py` | Point-in-time korelasyon kümeleri, grup akış özellikleri, sektör panosu |
 | `regime.py` | Kesitsel + makro rejim |
 | `shock_engine.py` | Tek skor fonksiyonu (`score_frame`) |
 | `portfolio.py` | Vol-hedefli boyut, korelasyon filtresi, stop seviyeleri |
@@ -59,3 +60,28 @@ Ek olarak:
 - Yahoo'nun BIST fiyatları bölünmeye göre düzeltilmiştir, **temettüye göre düzeltilmemiştir**. Temettü günlerinde küçük bir etiket gürültüsü oluşur. %25'i aşan günlük hareketler (düzeltilmemiş kurumsal işlem) geçersiz bar sayılır.
 - CDS ücretsiz ve güvenilir biçimde alınamadığı için vekil kullanılır (TUR−EEM + USDTRY volatilitesi).
 - Maliyet modeli muhafazakârdır (tek yön 8 bps komisyon + likiditeye bağlı 3–60 bps kayma). Aracı kurumunuzun gerçek oranına göre `config.py` içinden ayarlanabilir.
+
+
+## v2.1: Sektör / Grup Akış Katmanı ve İşaretli Öğrenme
+
+**Amaç:** Kurumsal para tek hisseye değil, birlikte hareket eden sepetlere (tema, faktör, endeks ağırlığı) girer. Sistem artık tek hisse şokunu, o hissenin grubunda birikim olup olmadığıyla birlikte değerlendiriyor.
+
+**Nasıl çalışır (`sector_flow.py`):**
+- Her ayın ilk işlem gününde, önceki 250 günün **piyasadan arındırılmış getiri korelasyonlarıyla** hisseler en fazla 16 gruba kümelenir. Kümeleme yalnızca o tarihten önceki veriyi kullanır (ileriye bakma yok) ve takvime sabittir; böylece canlı ile backtest aynı grupları üretir.
+- Grup özellikleri: grup CMF'si (birikim), birikim genişliği, 20 günlük göreli güç, lider–takipçi farkı, hissenin gruptan tek başına sapması. Bunlar birleşerek 6. aile olan `sector_score`'u oluşturur.
+- Resmi sektör etiketi yerine istatistiksel küme kullanılmasının nedeni gerçek veride görüldü: S&P'de aynı birikim sinyali kümelerle IC +0.043, resmi sektörle +0.007 verdi.
+
+**İşaretli öğrenme:** Öğrenici artık bir ailenin işaretini çevirebilir. Bunun için eğitim verisinde t ≤ −2 gerekir. Gerçek BIST verisinde "olay" ve "aktivite" (gürültülü hacim şokları) T+5'te **geri dönüş** öngörüyor (t≈−5). Yani büyük oyuncunun izi yüksek sesli hacim patlaması değil, **sessiz birikim**.
+
+**Gerçek veriyle walk-forward (OOS, Eki 2024 – Eyl 2026, embargo'lu, net):**
+
+| | Önce | Sonra |
+|---|---|---|
+| BIST (öğrenen aday, terfi etti) | −%0.64 / PF 0.84 / WR %44.3 | **+%0.40 / PF 1.14 / WR %48.5** (8 dilimin 7'sinde daha iyi; t=1.35, henüz %5 anlamlılıkta değil) |
+| S&P (sektörlü şablon) | +%0.25 / PF 1.13 / t=1.0 | **+%0.34 / PF 1.18 / t=3.6** |
+
+**Risk:** Sektör akışı adayları aynı gruba yığabileceği için portföyde **grup başına en fazla 3 pozisyon** sınırı vardır (S&P'de ayrıca resmi sektör başına 3).
+
+**Raporlar:** Telegram'da günlük "Sektör / Grup Akış Panosu" yer alır: birikim, görece güçlü ve dağıtım grupları, 🕵️ sessiz birikim işareti. Her önerinin grubu ve sektör akış skoru da gösterilir. Panelde yeni "🧭 Sektör Akışı" sekmesi var.
+
+**Not:** Sektör ailesinin başlangıç şablon ağırlığı (%15) ve iç formülü, iki projenin tüm verisine bakılarak seçildi. Bu hafif bir veri gözetleme (data snooping) riski taşır. Bu yüzden ağırlığın gerçek değerini, embargo'lu walk-forward ve terfi kuralları üzerinden sistemin kendisi belirler.

@@ -25,13 +25,14 @@ from autonomy_guard import evaluate_autonomy_guard
 from bist_history import append_live_bar, load_macro, merge_universe, update_incremental, update_macro
 from features import attach_regime, build_features, correlation_matrix
 from portfolio import build_portfolio
+from sector_flow import group_names, sector_board
 from regime import compute_macro_frame
 from shock_engine import entry_status, gecmis_veriyi_yukle, score_frame, stars_for
 from shock_fetcher import get_bist_raw_data
 from shock_learner import (_label_rows, active_profiles, load_ai_state, load_signal_history, log_shock_signals,
                            save_ai_state, update_realized_shock_returns)
 
-LIVE_LOOKBACK_DAYS = 220
+LIVE_LOOKBACK_DAYS = 300   # kümeler için >= CLUSTER_LOOKBACK + 1 ay
 
 
 # ------------------------------------------------------------------
@@ -195,6 +196,7 @@ def record_ledger_entries(ledger, portfolio_df, day):
             "excess_return": r.get("excess_return"), "flow_score": r.get("flow_score"),
             "event_score": r.get("event_score"), "activity_score": r.get("activity_score"),
             "liquidity_score": r.get("liquidity_score"), "overnight_risk": r.get("overnight_risk"),
+            "grp": r.get("grp"), "sector_score": r.get("sector_score"), "sec_cmf": r.get("sec_cmf"),
             "entry_status": r.get("entry_status"), "is_completed": 0,
         })
     new = pd.DataFrame(rows)
@@ -240,7 +242,22 @@ def exit_engine_text(ledger, panel):
 # ------------------------------------------------------------------
 # Rapor
 # ------------------------------------------------------------------
-def format_report(port, scored_today, regime, guard, state, dq_text, exit_text):
+def format_board(board):
+    """Sektör/grup akış panosu: kurumsal birikimin ve dağıtımın grup düzeyindeki izi."""
+    if board is None or board.empty:
+        return ""
+    txt = "🧭 <b>SEKTÖR / GRUP AKIŞ PANOSU</b>\n"
+    for side, icon in (("BİRİKİM", "🟢"), ("GÖRECE GÜÇLÜ", "🟡"), ("DAĞITIM", "🔴")):
+        part = board[board["side"] == side]
+        if part.empty:
+            continue
+        txt += f"<i>{side}</i>\n"
+        for _, b in part.iterrows():
+            tag = " 🕵️ sessiz birikim" if side == "BİRİKİM" and b["stealth"] >= 0.35 else ""
+            txt += (f"{icon} G{int(b['grp'])} <b>{b['name']}</b> ({int(b['n'])}) | CMF {b['sec_cmf']:+.2f} | "
+                    f"genişlik %{b['sec_acc'] * 100:.0f} | 20g %{b['sec_ret20']:+.1f}{tag}\n")
+    return txt + "━━━━━━━━━━━━━━━━━━━━\n\n"
+def format_report(port, scored_today, regime, guard, state, dq_text, exit_text, board=None, gnames=None):
     wf = state.get("backtest_summary", {})
     msg = exit_text
     msg += "🧠 <b>ADAPTIVE BIST META-ENGINE v2</b>\n"
@@ -253,6 +270,7 @@ def format_report(port, scored_today, regime, guard, state, dq_text, exit_text):
         msg += (f"📊 <b>OOS doğrulama:</b> N={wf.get('n', 0)} | WR %{wf.get('win_rate', 0):.1f} (LCB %{wf.get('wilson_lcb', 0):.1f}) | "
                 f"net ort %{wf.get('avg_return', 0):+.2f} | PF {wf.get('profit_factor', 0):.2f} | t={wf.get('cohort_t', 0):.1f}\n")
     msg += f"🔧 <i>Veri: {dq_text}</i>\n━━━━━━━━━━━━━━━━━━━━\n\n"
+    msg += format_board(board)
 
     picks = port[port["weight_pct"] > 0] if port is not None and not port.empty else pd.DataFrame()
     if picks.empty:
@@ -270,6 +288,10 @@ def format_report(port, scored_today, regime, guard, state, dq_text, exit_text):
         msg += (f"• Olay {r['event_score']:.0f} | Birikim {r['flow_score']:.0f} (CMF {r.get('cmf20', 0):+.2f}) | "
                 f"Dayanıklılık {r['resilience_score']:.0f} | Gap-risk {r['overnight_risk']:.0f}\n")
         msg += f"• Giriş: <i>{r['entry_status']}</i> | Felaket stop ≈ {r['stop_price']:.2f}\n"
+        g = r.get("grp")
+        if g == g and g is not None and gnames:
+            msg += (f"• 🧭 Grup: <i>{gnames.get(int(g), '-')}</i> | Sektör akışı {r.get('sector_score', 50):.0f} "
+                    f"(grup CMF {r.get('sec_cmf', 0) if r.get('sec_cmf') == r.get('sec_cmf') else 0:+.2f})\n")
         msg += f"💰 <b>Ağırlık: {r['allocation']}</b>\n\n"
     skipped = port[(port["weight_pct"] <= 0) & (port["skip_reason"] != "")]
     if not skipped.empty:
@@ -334,6 +356,14 @@ def main():
     if guard.get("block_new_entries"):
         scored["effective_min_score"] = 101.0
     scored["entry_status"] = [entry_status(r) for _, r in scored.iterrows()]
+    official = None
+    gnames = group_names(today, official)
+    board = sector_board(today, official)
+    try:
+        os.makedirs(C.DATA_DIR, exist_ok=True)
+        board.to_json(os.path.join(C.DATA_DIR, "sector_board.json"), orient="records", force_ascii=False, indent=1)
+    except Exception as exc:
+        print(f"Pano kaydedilemedi: {exc}")
     scored["stars"] = [stars_for(r) for _, r in scored.iterrows()]
     scored = scored.sort_values(["shock_score", "risk_adjusted_score"], ascending=False).reset_index(drop=True)
 
@@ -389,7 +419,7 @@ def main():
     state["status"] = f"🧠 META v2 | {regime['label']} | makro {regime['macro_label']} | guard {guard.get('mode')}"
     save_ai_state(state)
 
-    send_telegram_message(format_report(port, scored, regime, guard, state, dq_text, exit_text))
+    send_telegram_message(format_report(port, scored, regime, guard, state, dq_text, exit_text, board, gnames))
     print("Tarama tamamlandı.")
 
 

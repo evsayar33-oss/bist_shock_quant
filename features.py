@@ -20,8 +20,9 @@ import pandas as pd
 
 import config as C
 from regime import classify_bist_regime, combine_regime, macro_snapshot
+from sector_flow import add_sector_features
 
-FAMILIES = ("event", "flow", "activity", "liquidity", "resilience")
+FAMILIES = ("event", "flow", "activity", "liquidity", "resilience", "sector")
 
 
 def _wide(panel, col):
@@ -141,6 +142,7 @@ def build_features(panel: pd.DataFrame, with_labels: bool = True) -> pd.DataFram
     df["directional_flow_ok"] = df["flow_score"] >= C.MIN_FLOW_SCORE
     df["eligible"] = (df["current_positive"] & df["directional_flow_ok"] & ~df["is_downtrend_knife"]
                       & ~df["is_illiquid"] & (df["overnight_risk"] < C.MAX_OVERNIGHT_RISK))
+    df = add_sector_features(df, c)          # sektör/grup akış katmanı (point-in-time kümeler)
     num = df.select_dtypes(include=[np.number]).columns
     df[num] = df[num].replace([np.inf, -np.inf], np.nan)
     return df.reset_index(drop=True)
