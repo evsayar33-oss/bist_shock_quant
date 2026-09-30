@@ -1,5 +1,5 @@
 {
- "ts": "2026-09-30T12:55:32",
+ "ts": "2026-09-30T23:18:44",
  "score": 88,
  "status": "warn",
  "icon": "🟡",
@@ -14,13 +14,13 @@
    "group": "Veri",
    "name": "Son gün kapsamı",
    "level": "ok",
-   "detail": "485 hisse (%100)"
+   "detail": "496 hisse (%100)"
   },
   {
    "group": "Veri",
    "name": "Son bar kaynağı",
    "level": "ok",
-   "detail": "Yahoo 485 · TradingView yedeği 0"
+   "detail": "Yahoo 496 · TradingView yedeği 0"
   },
   {
    "group": "Veri",
@@ -38,25 +38,25 @@
    "group": "Kaynak",
    "name": "Yahoo (artımlı)",
    "level": "ok",
-   "detail": "Yahoo son gün 2026-09-30 · 485 hisse"
+   "detail": "Yahoo son gün 2026-09-30 · 496 hisse"
   },
   {
    "group": "Kaynak",
    "name": "TradingView",
    "level": "ok",
-   "detail": "346 satır"
+   "detail": "450 satır"
   },
   {
    "group": "Model",
    "name": "Son yeniden eğitim",
    "level": "ok",
-   "detail": "0 saat önce"
+   "detail": "10 saat önce"
   },
   {
    "group": "Model",
    "name": "Backtest örneklemi",
    "level": "ok",
-   "detail": "1664 işlem · kazanma %67.19 · net %+0.129"
+   "detail": "1172 işlem · kazanma %67.49 · net %+0.431"
   },
   {
    "group": "Model",
@@ -80,13 +80,13 @@
    "group": "Çalışma",
    "name": "Öğrenme denetimi",
    "level": "ok",
-   "detail": "0 saat önce"
+   "detail": "10 saat önce"
   },
   {
    "group": "Çalışma",
    "name": "Haftalık yenileme",
    "level": "ok",
-   "detail": "0 saat önce"
+   "detail": "10 saat önce"
   }
  ]
 }
