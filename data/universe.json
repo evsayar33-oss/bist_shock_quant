@@ -1,5 +1,5 @@
 {
- "updated": "2026-09-29",
+ "updated": "2026-09-30",
  "tickers": [
   "A1CAP",
   "A1YEN",
@@ -116,6 +116,7 @@
   "CITAS",
   "CLEBI",
   "CMBTN",
+  "CRDFA",
   "CRFSA",
   "CVKMD",
   "CWENE",
@@ -171,6 +172,7 @@
   "EPLAS",
   "ERCB",
   "EREGL",
+  "ERSU",
   "ESCAR",
   "ESCOM",
   "ESEN",
@@ -179,6 +181,7 @@
   "EUKYO",
   "EUPWR",
   "EUREN",
+  "EYGYO",
   "FADE",
   "FENER",
   "FLAP",
@@ -396,6 +399,7 @@
   "SAYAS",
   "SDTTR",
   "SEGMN",
+  "SEKUR",
   "SELVA",
   "SERNT",
   "SISE",
