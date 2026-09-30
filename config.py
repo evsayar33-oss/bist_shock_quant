@@ -34,7 +34,7 @@ INCREMENTAL_PERIOD = "15d"          # günlük güncellemede çekilecek pencere
 DOWNLOAD_CHUNK = 60                 # yfinance toplu indirme parça boyutu
 MAX_UNIVERSE = 450                  # TradingView'den alınacak en likit hisse sayısı
 SPLIT_CHECK_TOL = 0.02              # örtüşen barda %2'den büyük fark => bölünme/düzeltme, tam yeniden indir
-MAX_VALID_DAILY_MOVE = 0.25         # BIST fiyat marjı ±%10; |getiri|>%25 => düzeltilmemiş kurumsal işlem, bar geçersiz
+MAX_VALID_DAILY_MOVE = 0.105        # BIST fiyat marjı ±%10: |getiri|>%10.5 fiziksel olarak imkânsız => düzeltilmemiş kurumsal işlem, bar geçersiz (teşhis: 95 bar)
 
 MACRO_TICKERS = {
     "XU100": "XU100.IS",
@@ -103,7 +103,7 @@ MAX_PAIR_CORR = 0.75
 
 # Çıkış motoru. Test edilen strateji = T+HORIZON kapanışta ZAMAN çıkışıdır (etiketle birebir).
 # ATR felaket stopu yalnızca kuyruk riskine karşı koruma; normal işleyişte nadiren tetiklenir.
-STOP_ATR = 2.5
+STOP_ATR = 2.0                      # = EXIT_STOP_ATR (geriye uyum)
 TP1_ATR = 2.0          # bilgi amaçlı hedef seviye (kısmi kâr opsiyonel, modelin parçası değil)
 
 REGIMES = ("CRASH", "STRESS", "ROTATION", "EXPANSION", "QUIET", "NORMAL")
@@ -139,4 +139,15 @@ CCY = "₺"
 CLOSE_TEXT = "BIST kapanış"
 PROMOTION_MIN_T = 1.0               # aday OOS kohort t-istatistiği en az bu olmalı (şansa bağlı terfiyi önler)
 HISTORY_MODULE = "bist_history"            # panelin fiyat grafiği için
-META_MIN_T = 0.5                    # olasılık filtresinin devreye girmesi için en düşük OOS t
+META_MIN_T = 0.0                    # olasılık filtresi: yön şartı (asıl kanıt: LCB + dilim tutarlılığı)
+META_MIN_FOLD_SHARE = 0.6           # filtre, dilimlerin en az %60ında aktif modeli net getiride geçmeli
+
+# ------------------------------------------------------------------
+# v3 çıkış kuralı (gerçek veride seçildi: ilk yarıda seçim, son yarıda sınama; kullanıcı onayı "Dengeli")
+# ------------------------------------------------------------------
+EXIT_STOP_ATR = 2.0                 # zarar kes: giriş − 2.0×ATR
+EXIT_TP1_ATR = 1.5                  # TP1: giriş + 1.5×ATR -> yarısı satılır, stop girişe çekilir
+EXIT_TP1_FRAC = 0.5
+EXIT_TP2_ATR = 2.0                  # TP2: giriş + 2×ATR (TP1'i geçenlerin ~%54-58'i ulaşıyor)
+ROLLING_TRAIN_DAYS = 375            # güçlü yeniden eğitimde denenecek yakın dönem penceresi (etiketli gün)
+HEALTH_CLOSE_HOUR = 18                # yerel saat (workflow TZ); bu saatten sonra bugünün barı beklenir
