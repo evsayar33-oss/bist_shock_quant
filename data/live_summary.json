@@ -1,0 +1,22 @@
+{
+ "n_signals": 0,
+ "all": {
+  "n": 0
+ },
+ "last20": {
+  "n": 0
+ },
+ "backtest": {
+  "n": 1664,
+  "wins": 1118,
+  "win_rate": 67.19,
+  "wilson_lcb": 65.7,
+  "profit_factor": 1.049,
+  "avg_return": 0.129,
+  "median": 2.662,
+  "p10": -9.001,
+  "cohort_t": 0.14,
+  "n_cohorts": 35,
+  "days": 352
+ }
+}

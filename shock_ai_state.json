@@ -13,9 +13,9 @@
     "watch_streak": 0,
     "safe_streak": 0,
     "recovery_streak": 0,
-    "healthy_streak": 16,
+    "healthy_streak": 18,
     "last_transition": "2026-09-28T07:54:01.254732+00:00",
-    "last_evaluation": "2026-09-30T09:53:06.152592+00:00",
+    "last_evaluation": "2026-09-30T09:56:47.215023+00:00",
     "reason": "HEALTHY",
     "recent_regimes": [
       "CRASH",
@@ -29,10 +29,101 @@
       "CRASH",
       "CRASH"
     ],
-    "feature_baseline": {},
+    "feature_baseline": {
+      "shock_score": {
+        "n": 484,
+        "mean": 18.797934,
+        "std": 29.009565,
+        "median": 0.0,
+        "q25": 0.0,
+        "q75": 48.55,
+        "mad": 0.0
+      },
+      "non_price_score": {
+        "n": 484,
+        "mean": 50.105372,
+        "std": 14.236377,
+        "median": 50.05,
+        "q25": 39.475,
+        "q75": 60.225,
+        "mad": 10.3
+      },
+      "flow_score": {
+        "n": 484,
+        "mean": 50.103306,
+        "std": 20.468992,
+        "median": 52.14876,
+        "q25": 34.938017,
+        "q75": 65.0,
+        "mad": 14.876033
+      },
+      "activity_score": {
+        "n": 484,
+        "mean": 50.103306,
+        "std": 27.478816,
+        "median": 51.342975,
+        "q25": 26.694215,
+        "q75": 72.86157,
+        "mad": 22.830579
+      },
+      "liquidity_score": {
+        "n": 484,
+        "mean": 50.103306,
+        "std": 28.837615,
+        "median": 50.05176,
+        "q25": 25.207039,
+        "q75": 75.0,
+        "mad": 24.94824
+      },
+      "resilience_score": {
+        "n": 484,
+        "mean": 49.313083,
+        "std": 20.054686,
+        "median": 49.274473,
+        "q25": 32.603424,
+        "q75": 64.146313,
+        "mad": 15.507451
+      },
+      "overnight_risk": {
+        "n": 484,
+        "mean": 50.010331,
+        "std": 16.795261,
+        "median": 51.087583,
+        "q25": 37.402651,
+        "q75": 62.929015,
+        "mad": 12.274051
+      },
+      "z_vol": {
+        "n": 484,
+        "mean": -0.379749,
+        "std": 0.478852,
+        "median": -0.422807,
+        "q25": -0.656919,
+        "q75": -0.185547,
+        "mad": 0.236087
+      },
+      "z_flow": {
+        "n": 484,
+        "mean": -0.027438,
+        "std": 0.895998,
+        "median": -0.067125,
+        "q25": -0.768881,
+        "q75": 0.584271,
+        "mad": 0.682878
+      },
+      "z_range": {
+        "n": 481,
+        "mean": -1.003695,
+        "std": 0.840592,
+        "median": -1.051389,
+        "q25": -1.539687,
+        "q75": -0.435063,
+        "mad": 0.523895
+      }
+    },
     "stress_test": {
       "passed": true,
-      "timestamp": "2026-09-30T08:07:42.980254+00:00",
+      "timestamp": "2026-09-30T09:55:32.408428+00:00",
       "version": "1.0.0",
       "cases": 7,
       "passed_cases": 7
@@ -48,33 +139,33 @@
     "last_reason": "HEALTHY"
   },
   "heartbeat": {
-    "audit": "2026-09-30T12:53:06",
+    "audit": "2026-09-30T12:56:47",
     "weekly": "2026-09-30T12:53:06",
-    "scan": "2026-09-30T11:07:43"
+    "scan": "2026-09-30T12:55:32"
   },
   "last_scan": {
     "day": "2026-09-30",
     "regime": {
       "label": "CRASH",
-      "confidence": 0.624,
+      "confidence": 0.648,
       "is_crashing": true,
-      "red_ratio": 0.7309,
-      "mean_change": -1.26,
-      "median_change": -0.916,
-      "dispersion": 3.097,
-      "breadth_balance": -0.4644,
+      "red_ratio": 0.7124,
+      "mean_change": -1.373,
+      "median_change": -1.001,
+      "dispersion": 3.502,
+      "breadth_balance": -0.4617,
       "cross_label": "CRASH",
       "macro_label": "NEUTRAL",
-      "macro_stress": 0.422,
-      "macro_threshold_add": 2.53,
-      "macro_exposure_mult": 0.747,
-      "usdtry_ret5": 0.362,
-      "usdtry_vol_pct": 0.296,
-      "xu100_usd_trend": -13.507,
-      "bank_rel20": 10.502,
-      "vix_pct": 0.258,
+      "macro_stress": 0.428,
+      "macro_threshold_add": 2.57,
+      "macro_exposure_mult": 0.743,
+      "usdtry_ret5": 0.309,
+      "usdtry_vol_pct": 0.328,
+      "xu100_usd_trend": -13.396,
+      "bank_rel20": 10.13,
+      "vix_pct": 0.276,
       "tur_rel20": -12.509,
-      "exposure_mult": 0.747
+      "exposure_mult": 0.743
     },
     "data_quality": 100.0,
     "threshold_offset": 0.0,
@@ -82,6 +173,7 @@
     "n_positions": 0
   },
   "regime_hist": [
+    "CRASH",
     "CRASH"
   ],
   "meta_engine": {
@@ -610,49 +702,490 @@
         "version": 2
       }
     },
-    "shadow": {},
+    "shadow": {
+      "profiles": {
+        "CRASH": {
+          "weights": {
+            "event": 0.1847,
+            "flow": 0.2039,
+            "activity": 0.184,
+            "liquidity": 0.0822,
+            "resilience": 0.2305,
+            "sector": 0.1147
+          },
+          "signs": {
+            "event": -1,
+            "flow": 1,
+            "activity": -1,
+            "liquidity": 1,
+            "resilience": 1,
+            "sector": 1
+          },
+          "sign_stats": {
+            "event": {
+              "ic": -0.0345,
+              "t": -2.68,
+              "days": 684
+            },
+            "flow": {
+              "ic": 0.0367,
+              "t": 2.71,
+              "days": 682
+            },
+            "activity": {
+              "ic": -0.0325,
+              "t": -2.49,
+              "days": 684
+            },
+            "liquidity": {
+              "ic": 0.0247,
+              "t": 1.78,
+              "days": 685
+            },
+            "resilience": {
+              "ic": 0.0591,
+              "t": 4.31,
+              "days": 685
+            },
+            "sector": {
+              "ic": 0.0069,
+              "t": 0.4,
+              "days": 492
+            }
+          },
+          "gate": "UP",
+          "min_score": 82.0,
+          "regime": "CRASH",
+          "version": 2,
+          "learned_edges": {
+            "event": 0.0817,
+            "flow": 0.0537,
+            "activity": 0.0812,
+            "liquidity": 0.0118,
+            "resilience": 0.0228,
+            "sector": 0.0125
+          },
+          "regime_days": 172,
+          "threshold_source": "REGIME",
+          "train_metrics": {
+            "n": 166,
+            "wins": 111,
+            "win_rate": 66.87,
+            "wilson_lcb": 62.04,
+            "profit_factor": 1.357,
+            "avg_return": 0.867,
+            "median": 3.016,
+            "p10": -8.531,
+            "cohort_t": 0.41,
+            "n_cohorts": 9,
+            "days": 90
+          }
+        },
+        "STRESS": {
+          "weights": {
+            "event": 0.1235,
+            "flow": 0.2312,
+            "activity": 0.1249,
+            "liquidity": 0.1039,
+            "resilience": 0.2928,
+            "sector": 0.1237
+          },
+          "signs": {
+            "event": -1,
+            "flow": 1,
+            "activity": -1,
+            "liquidity": 1,
+            "resilience": 1,
+            "sector": 1
+          },
+          "sign_stats": {
+            "event": {
+              "ic": -0.0345,
+              "t": -2.68,
+              "days": 684
+            },
+            "flow": {
+              "ic": 0.0367,
+              "t": 2.71,
+              "days": 682
+            },
+            "activity": {
+              "ic": -0.0325,
+              "t": -2.49,
+              "days": 684
+            },
+            "liquidity": {
+              "ic": 0.0247,
+              "t": 1.78,
+              "days": 685
+            },
+            "resilience": {
+              "ic": 0.0591,
+              "t": 4.31,
+              "days": 685
+            },
+            "sector": {
+              "ic": 0.0069,
+              "t": 0.4,
+              "days": 492
+            }
+          },
+          "gate": "UP",
+          "min_score": 78.0,
+          "regime": "STRESS",
+          "version": 2,
+          "learned_edges": {
+            "event": 0.0154,
+            "flow": 0.0608,
+            "activity": 0.0168,
+            "liquidity": 0.0159,
+            "resilience": 0.0876,
+            "sector": 0.005
+          },
+          "regime_days": 105,
+          "threshold_source": "REGIME",
+          "train_metrics": {
+            "n": 161,
+            "wins": 121,
+            "win_rate": 75.16,
+            "wilson_lcb": 70.55,
+            "profit_factor": 1.819,
+            "avg_return": 1.747,
+            "median": 3.532,
+            "p10": -8.119,
+            "cohort_t": 0.79,
+            "n_cohorts": 6,
+            "days": 63
+          }
+        },
+        "ROTATION": {
+          "weights": {
+            "event": 0.1016,
+            "flow": 0.2294,
+            "activity": 0.14,
+            "liquidity": 0.1574,
+            "resilience": 0.2656,
+            "sector": 0.1058
+          },
+          "signs": {
+            "event": -1,
+            "flow": 1,
+            "activity": -1,
+            "liquidity": 1,
+            "resilience": 1,
+            "sector": 1
+          },
+          "sign_stats": {
+            "event": {
+              "ic": -0.0345,
+              "t": -2.68,
+              "days": 684
+            },
+            "flow": {
+              "ic": 0.0367,
+              "t": 2.71,
+              "days": 682
+            },
+            "activity": {
+              "ic": -0.0325,
+              "t": -2.49,
+              "days": 684
+            },
+            "liquidity": {
+              "ic": 0.0247,
+              "t": 1.78,
+              "days": 685
+            },
+            "resilience": {
+              "ic": 0.0591,
+              "t": 4.31,
+              "days": 685
+            },
+            "sector": {
+              "ic": 0.0069,
+              "t": 0.4,
+              "days": 492
+            }
+          },
+          "gate": "UP",
+          "min_score": 76.0,
+          "regime": "ROTATION",
+          "version": 2,
+          "learned_edges": {
+            "event": 0.0124,
+            "flow": 0.0451,
+            "activity": 0.0256,
+            "liquidity": 0.0399,
+            "resilience": 0.0722,
+            "sector": 0.0108
+          },
+          "regime_days": 226,
+          "threshold_source": "REGIME",
+          "train_metrics": {
+            "n": 231,
+            "wins": 166,
+            "win_rate": 71.86,
+            "wilson_lcb": 67.93,
+            "profit_factor": 1.278,
+            "avg_return": 0.713,
+            "median": 2.938,
+            "p10": -8.521,
+            "cohort_t": 0.41,
+            "n_cohorts": 12,
+            "days": 120
+          }
+        },
+        "EXPANSION": {
+          "weights": {
+            "event": 0.1928,
+            "flow": 0.189,
+            "activity": 0.1592,
+            "liquidity": 0.1214,
+            "resilience": 0.229,
+            "sector": 0.1087
+          },
+          "signs": {
+            "event": -1,
+            "flow": 1,
+            "activity": -1,
+            "liquidity": 1,
+            "resilience": 1,
+            "sector": 1
+          },
+          "sign_stats": {
+            "event": {
+              "ic": -0.0345,
+              "t": -2.68,
+              "days": 684
+            },
+            "flow": {
+              "ic": 0.0367,
+              "t": 2.71,
+              "days": 682
+            },
+            "activity": {
+              "ic": -0.0325,
+              "t": -2.49,
+              "days": 684
+            },
+            "liquidity": {
+              "ic": 0.0247,
+              "t": 1.78,
+              "days": 685
+            },
+            "resilience": {
+              "ic": 0.0591,
+              "t": 4.31,
+              "days": 685
+            },
+            "sector": {
+              "ic": 0.0069,
+              "t": 0.4,
+              "days": 492
+            }
+          },
+          "gate": "UP",
+          "min_score": 68.0,
+          "regime": "EXPANSION",
+          "version": 2,
+          "learned_edges": {
+            "event": 0.036,
+            "flow": 0.0081,
+            "activity": 0.0131,
+            "liquidity": 0.0152,
+            "resilience": 0.0599,
+            "sector": 0.005
+          },
+          "regime_days": 182,
+          "threshold_source": "REGIME",
+          "train_metrics": {
+            "n": 1205,
+            "wins": 824,
+            "win_rate": 68.38,
+            "wilson_lcb": 66.64,
+            "profit_factor": 1.267,
+            "avg_return": 0.648,
+            "median": 2.947,
+            "p10": -9.104,
+            "cohort_t": 0.78,
+            "n_cohorts": 17,
+            "days": 174
+          }
+        },
+        "QUIET": {
+          "weights": {
+            "event": 0.1548,
+            "flow": 0.195,
+            "activity": 0.1766,
+            "liquidity": 0.1487,
+            "resilience": 0.242,
+            "sector": 0.083
+          },
+          "signs": {
+            "event": -1,
+            "flow": 1,
+            "activity": -1,
+            "liquidity": 1,
+            "resilience": 1,
+            "sector": 1
+          },
+          "sign_stats": {
+            "event": {
+              "ic": -0.0345,
+              "t": -2.68,
+              "days": 684
+            },
+            "flow": {
+              "ic": 0.0367,
+              "t": 2.71,
+              "days": 682
+            },
+            "activity": {
+              "ic": -0.0325,
+              "t": -2.49,
+              "days": 684
+            },
+            "liquidity": {
+              "ic": 0.0247,
+              "t": 1.78,
+              "days": 685
+            },
+            "resilience": {
+              "ic": 0.0591,
+              "t": 4.31,
+              "days": 685
+            },
+            "sector": {
+              "ic": 0.0069,
+              "t": 0.4,
+              "days": 492
+            }
+          },
+          "gate": "UP",
+          "min_score": 78.0,
+          "regime": "QUIET",
+          "version": 2,
+          "learned_edges": {
+            "event": 0.0395,
+            "flow": 0.0417,
+            "activity": 0.0375,
+            "liquidity": 0.0297,
+            "resilience": 0.0641,
+            "sector": 0.0085
+          },
+          "regime_days": 0,
+          "threshold_source": "GLOBAL"
+        },
+        "NORMAL": {
+          "weights": {
+            "event": 0.1752,
+            "flow": 0.1984,
+            "activity": 0.1698,
+            "liquidity": 0.1317,
+            "resilience": 0.242,
+            "sector": 0.083
+          },
+          "signs": {
+            "event": -1,
+            "flow": 1,
+            "activity": -1,
+            "liquidity": 1,
+            "resilience": 1,
+            "sector": 1
+          },
+          "sign_stats": {
+            "event": {
+              "ic": -0.0345,
+              "t": -2.68,
+              "days": 684
+            },
+            "flow": {
+              "ic": 0.0367,
+              "t": 2.71,
+              "days": 682
+            },
+            "activity": {
+              "ic": -0.0325,
+              "t": -2.49,
+              "days": 684
+            },
+            "liquidity": {
+              "ic": 0.0247,
+              "t": 1.78,
+              "days": 685
+            },
+            "resilience": {
+              "ic": 0.0591,
+              "t": 4.31,
+              "days": 685
+            },
+            "sector": {
+              "ic": 0.0069,
+              "t": 0.4,
+              "days": 492
+            }
+          },
+          "gate": "UP",
+          "min_score": 78.0,
+          "regime": "NORMAL",
+          "version": 2,
+          "learned_edges": {
+            "event": 0.0395,
+            "flow": 0.0417,
+            "activity": 0.0375,
+            "liquidity": 0.0297,
+            "resilience": 0.0641,
+            "sector": 0.0085
+          },
+          "regime_days": 0,
+          "threshold_source": "GLOBAL"
+        }
+      },
+      "created_at": "2026-09-30T12:55:34",
+      "decision": "PF bozulması (1.09 vs 1.16)"
+    },
     "promotion_count": 1,
     "rollback_count": 0,
-    "winrate_optimizer_status": "UNCHANGED | threshold=75.0 | OOS WR=67.23% | LCB=65.46% | N=1175",
+    "winrate_optimizer_status": "UNCHANGED | threshold=75.0 | OOS WR=66.50% | LCB=64.84% | N=1367",
     "last_decision": {
-      "promoted": true,
+      "promoted": false,
       "rollback": false,
-      "note": "Aktif model zarar ediyor; daha iyi aday devreye alındı | LCB fark +0.55pp | Net ort fark +0.32 | t=0.14",
-      "timestamp": "2026-09-30T12:51:06",
+      "note": "PF bozulması (1.09 vs 1.16)",
+      "timestamp": "2026-09-30T12:55:34",
       "train_mode": "Tam geçmiş"
     }
   },
   "meta_label": {
     "enabled": false,
-    "note": "filtre kapalı | kazanma -1.9pp | net -0.28 | PF 0.84 vs 0.93 | dilim tutarlılığı 0/7",
+    "note": "filtre kapalı | kazanma -1.5pp | net -0.59 | PF 0.94 vs 1.16 | dilim tutarlılığı 2/7",
     "oos": {
-      "n": 2513,
-      "wins": 1619,
-      "win_rate": 64.42,
-      "wilson_lcb": 63.19,
-      "profit_factor": 0.84,
-      "avg_return": -0.468,
-      "median": 2.617,
-      "p10": -9.744,
-      "cohort_t": -0.72,
-      "n_cohorts": 37,
-      "days": 375
+      "n": 1750,
+      "wins": 1155,
+      "win_rate": 66.0,
+      "wilson_lcb": 64.53,
+      "profit_factor": 0.939,
+      "avg_return": -0.159,
+      "median": 2.527,
+      "p10": -8.947,
+      "cohort_t": -0.15,
+      "n_cohorts": 35,
+      "days": 350
     },
     "base_oos": {
-      "n": 2758,
-      "wins": 1829,
-      "win_rate": 66.32,
-      "wilson_lcb": 65.15,
-      "profit_factor": 0.931,
-      "avg_return": -0.192,
-      "median": 2.729,
-      "p10": -9.846,
-      "cohort_t": -0.43,
-      "n_cohorts": 38,
-      "days": 387
+      "n": 1172,
+      "wins": 791,
+      "win_rate": 67.49,
+      "wilson_lcb": 65.71,
+      "profit_factor": 1.164,
+      "avg_return": 0.431,
+      "median": 2.777,
+      "p10": -9.185,
+      "cohort_t": 0.53,
+      "n_cohorts": 32,
+      "days": 322
     },
     "model": null,
-    "updated": "2026-09-30T12:51:06"
+    "updated": "2026-09-30T12:55:34"
   },
   "retrain": {
     "pending": false,
@@ -688,7 +1221,7 @@
       "EXIT_TP2_ATR": null
     }
   },
-  "status": "v3 sıfırlandı — yeni backtest bekleniyor",
+  "status": "🧠 META v2 | CRASH | makro NEUTRAL | guard NORMAL",
   "win_rate_optimizer": {
     "version": "2.0.0",
     "objective": "MAX_OOS_WIN_RATE_WITH_RISK_CONSTRAINTS",
@@ -696,37 +1229,37 @@
     "return_col": "realized_5d",
     "outcome_col": null,
     "baseline_threshold": 75.0,
-    "last_run": "2026-09-30T09:53:05.912557Z",
+    "last_run": "2026-09-30T09:56:47.021682Z",
     "walk_forward_folds": [
       {
         "train_start": "2024-10-17",
         "train_end": "2025-03-06",
         "test_start": "2025-03-25",
         "test_end": "2025-09-04",
-        "selected_threshold": 69.0,
+        "selected_threshold": 77.0,
         "train": {
-          "n": 841,
-          "wins": 567,
-          "win_rate": 67.42,
-          "wilson_lcb": 65.32,
-          "pf": 1.0131,
-          "avg_return": 0.0302
+          "n": 365,
+          "wins": 260,
+          "win_rate": 71.23,
+          "wilson_lcb": 68.11,
+          "pf": 1.2545,
+          "avg_return": 0.4984
         },
         "active_test": {
-          "n": 357,
-          "wins": 245,
-          "win_rate": 68.63,
-          "wilson_lcb": 65.4,
-          "pf": 1.2199,
-          "avg_return": 0.5904
+          "n": 349,
+          "wins": 247,
+          "win_rate": 70.77,
+          "wilson_lcb": 67.56,
+          "pf": 1.3814,
+          "avg_return": 0.938
         },
         "candidate_test": {
-          "n": 929,
-          "wins": 642,
-          "win_rate": 69.11,
-          "wilson_lcb": 67.13,
-          "pf": 1.1982,
-          "avg_return": 0.5343
+          "n": 167,
+          "wins": 117,
+          "win_rate": 70.06,
+          "wilson_lcb": 65.34,
+          "pf": 1.3135,
+          "avg_return": 0.8721
         }
       },
       {
@@ -734,30 +1267,30 @@
         "train_end": "2025-08-20",
         "test_start": "2025-09-05",
         "test_end": "2026-02-09",
-        "selected_threshold": 77.0,
+        "selected_threshold": 79.0,
         "train": {
-          "n": 481,
-          "wins": 339,
-          "win_rate": 70.48,
-          "wilson_lcb": 67.75,
-          "pf": 1.2793,
-          "avg_return": 0.6014
+          "n": 318,
+          "wins": 230,
+          "win_rate": 72.33,
+          "wilson_lcb": 69.0,
+          "pf": 1.3508,
+          "avg_return": 0.7339
         },
         "active_test": {
-          "n": 521,
-          "wins": 376,
-          "win_rate": 72.17,
-          "wilson_lcb": 69.59,
-          "pf": 1.3725,
-          "avg_return": 0.7731
+          "n": 569,
+          "wins": 415,
+          "win_rate": 72.93,
+          "wilson_lcb": 70.48,
+          "pf": 1.5195,
+          "avg_return": 1.0256
         },
         "candidate_test": {
-          "n": 293,
-          "wins": 212,
-          "win_rate": 72.35,
-          "wilson_lcb": 68.89,
-          "pf": 1.4528,
-          "avg_return": 0.8991
+          "n": 191,
+          "wins": 138,
+          "win_rate": 72.25,
+          "wilson_lcb": 67.92,
+          "pf": 1.3812,
+          "avg_return": 0.8249
         }
       },
       {
@@ -765,71 +1298,79 @@
         "train_end": "2026-01-23",
         "test_start": "2026-02-10",
         "test_end": "2026-09-16",
-        "selected_threshold": 73.0,
+        "selected_threshold": 75.0,
         "train": {
-          "n": 1865,
-          "wins": 1280,
-          "win_rate": 68.63,
-          "wilson_lcb": 67.24,
-          "pf": 1.1613,
-          "avg_return": 0.3863
+          "n": 1355,
+          "wins": 949,
+          "win_rate": 70.04,
+          "wilson_lcb": 68.42,
+          "pf": 1.2671,
+          "avg_return": 0.5996
         },
         "active_test": {
-          "n": 297,
-          "wins": 169,
-          "win_rate": 56.9,
-          "wilson_lcb": 53.19,
-          "pf": 0.6783,
-          "avg_return": -1.2702
+          "n": 449,
+          "wins": 247,
+          "win_rate": 55.01,
+          "wilson_lcb": 51.99,
+          "pf": 0.6635,
+          "avg_return": -1.3176
         },
         "candidate_test": {
-          "n": 496,
-          "wins": 292,
-          "win_rate": 58.87,
-          "wilson_lcb": 56.01,
-          "pf": 0.7339,
-          "avg_return": -0.9824
+          "n": 449,
+          "wins": 247,
+          "win_rate": 55.01,
+          "wilson_lcb": 51.99,
+          "pf": 0.6635,
+          "avg_return": -1.3176
         }
       }
     ],
     "selected_thresholds": [
-      69.0,
       77.0,
-      73.0
+      79.0,
+      75.0
     ],
-    "candidate_threshold": 73.0,
+    "candidate_threshold": 77.0,
     "active_oos": {
-      "n": 1175,
-      "wins": 790,
-      "win_rate": 67.23,
-      "wilson_lcb": 65.46,
-      "pf": 1.0736,
-      "avg_return": 0.2011
+      "n": 1367,
+      "wins": 909,
+      "win_rate": 66.5,
+      "wilson_lcb": 64.84,
+      "pf": 1.0854,
+      "avg_return": 0.2336
     },
     "candidate_oos": {
-      "n": 1825,
-      "wins": 1233,
-      "win_rate": 67.56,
-      "wilson_lcb": 66.14,
-      "pf": 1.1054,
-      "avg_return": 0.2826
+      "n": 774,
+      "wins": 509,
+      "win_rate": 65.76,
+      "wilson_lcb": 63.55,
+      "pf": 1.0368,
+      "avg_return": 0.1073
     },
-    "decision_reason": "WIN_RATE_LIFT_TOO_SMALL (+0.33pp)",
+    "decision_reason": "WIN_RATE_LIFT_TOO_SMALL (-0.74pp)",
     "active_threshold": 75.0,
     "status": "UNCHANGED"
   },
   "backtest_summary": {
-    "n": 1664,
-    "wins": 1118,
-    "win_rate": 67.19,
-    "wilson_lcb": 65.7,
-    "profit_factor": 1.049,
-    "avg_return": 0.129,
-    "median": 2.662,
-    "p10": -9.001,
-    "cohort_t": 0.14,
-    "n_cohorts": 35,
-    "days": 352
+    "n": 1172,
+    "wins": 791,
+    "win_rate": 67.49,
+    "wilson_lcb": 65.71,
+    "profit_factor": 1.164,
+    "avg_return": 0.431,
+    "median": 2.777,
+    "p10": -9.185,
+    "cohort_t": 0.53,
+    "n_cohorts": 32,
+    "days": 322
   },
-  "live_metrics": {}
+  "live_metrics": {},
+  "health": {
+    "score": 88,
+    "status": "warn",
+    "ts": "2026-09-30T12:55:32",
+    "issues": [
+      "Geçersiz sıçrama (bugün): 1 hisse (düzeltilmemiş kurumsal işlem şüphesi, işlem dışı)"
+    ]
+  }
 }
