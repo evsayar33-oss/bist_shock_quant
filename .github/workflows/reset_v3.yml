@@ -1,13 +1,15 @@
-name: BIST v2 Haftalik Tam Veri Yenileme
+name: v3 Sifirlama ve Yeni Backtest (tek seferlik)
 
-# Cumartesi: 3 yillik paneli ve makro serileri bastan indirir (bolunme/duzeltme temizligi),
-# ardindan ogrenme denetimini tam veriyle yeniden calistirir.
-# Ilk kurulumdan sonra bunu Actions sekmesinden bir kez elle calistirmaniz onerilir.
+# Eski backtest / defter / sinyal kayıtlarını siler, yeni çıkış kuralıyla sıfırdan backtest üretir.
+# Güvenlik: çalıştırırken "onay" kutusuna büyük harfle SIFIRLA yazılmalıdır.
 
 on:
-  schedule:
-    - cron: '0 7 * * 6'
   workflow_dispatch:
+    inputs:
+      onay:
+        description: "Onay için SIFIRLA yazın"
+        required: true
+        default: "hayir"
 
 permissions:
   contents: write
@@ -17,7 +19,8 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  refresh:
+  reset:
+    if: ${{ github.event.inputs.onay == 'SIFIRLA' }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
@@ -33,17 +36,17 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Tam Backfill (3 yil)
+      - name: Sifirla
         env:
           TZ: Europe/Istanbul
-        run: python bist_history.py --full
+        run: python reset_v3.py
 
-      - name: Ogrenme Denetimi
+      - name: Yeni backtest (tam yeniden egitim)
         env:
-          FULL_RETRAIN: "1"
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           CHAT_ID: ${{ secrets.CHAT_ID }}
           TZ: Europe/Istanbul
+          FULL_RETRAIN: "1"
         run: python shock_auditor.py
 
       - name: Kaydet
@@ -52,7 +55,7 @@ jobs:
           git config --global user.email "bot@bist.local"
           git add -A
           if git diff --cached --quiet; then exit 0; fi
-          git commit -m "📥 v2 haftalik veri yenileme"
+          git commit -m "♻️ v3 sifirlama + yeni backtest"
           for i in 1 2 3; do
             git pull --rebase -X theirs && git push && exit 0
             sleep 5
