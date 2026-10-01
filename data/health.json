@@ -1,5 +1,5 @@
 {
- "ts": "2026-10-01T16:46:19",
+ "ts": "2026-10-01T23:30:20",
  "score": 88,
  "status": "warn",
  "icon": "🟡",
@@ -50,13 +50,13 @@
    "group": "Model",
    "name": "Son yeniden eğitim",
    "level": "ok",
-   "detail": "0 saat önce"
+   "detail": "7 saat önce"
   },
   {
    "group": "Model",
    "name": "Backtest örneklemi",
    "level": "ok",
-   "detail": "926 işlem · kazanma %66.95 · net %+0.297"
+   "detail": "697 işlem · kazanma %71.74 · net %+1.317"
   },
   {
    "group": "Model",
@@ -80,13 +80,13 @@
    "group": "Çalışma",
    "name": "Öğrenme denetimi",
    "level": "ok",
-   "detail": "0 saat önce"
+   "detail": "7 saat önce"
   },
   {
    "group": "Çalışma",
    "name": "Haftalık yenileme",
    "level": "ok",
-   "detail": "0 saat önce"
+   "detail": "7 saat önce"
   }
  ]
 }

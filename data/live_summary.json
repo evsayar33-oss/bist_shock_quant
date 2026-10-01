@@ -12,16 +12,16 @@
  "stop_rate": null,
  "since": "2026-10-01",
  "backtest": {
-  "n": 926,
-  "wins": 620,
-  "win_rate": 66.95,
-  "wilson_lcb": 64.95,
-  "profit_factor": 1.097,
-  "avg_return": 0.297,
-  "median": 3.559,
-  "p10": -10.954,
-  "cohort_t": 0.21,
-  "n_cohorts": 29,
-  "days": 290
+  "n": 697,
+  "wins": 500,
+  "win_rate": 71.74,
+  "wilson_lcb": 69.5,
+  "profit_factor": 1.488,
+  "avg_return": 1.317,
+  "median": 4.087,
+  "p10": -10.818,
+  "cohort_t": 1.02,
+  "n_cohorts": 23,
+  "days": 232
  }
 }
