@@ -13,6 +13,7 @@ missing = sorted(set(uni) - set(panel["ticker"].unique())) if not panel.empty el
 if missing:
     time.sleep(10)
     panel = pd.concat([panel, H.download_ohlcv(missing, start=START)], ignore_index=True)
+panel["tarih"] = pd.to_datetime(panel["tarih"], errors="coerce"); panel = panel.dropna(subset=["tarih"])
 panel = panel.drop_duplicates(["tarih", "ticker"]).sort_values(["tarih", "ticker"])
 for y, g in panel.groupby(panel["tarih"].dt.year):
     g.to_csv(f"{OUT}/ohlcv_{y}.csv.gz", index=False, compression="gzip")
