@@ -13,9 +13,9 @@
     "watch_streak": 0,
     "safe_streak": 0,
     "recovery_streak": 0,
-    "healthy_streak": 24,
+    "healthy_streak": 25,
     "last_transition": "2026-09-28T07:54:01.254732+00:00",
-    "last_evaluation": "2026-10-01T13:47:37.033686+00:00",
+    "last_evaluation": "2026-10-01T13:54:34.421287+00:00",
     "reason": "HEALTHY",
     "recent_regimes": [
       "CRASH",
@@ -25,7 +25,7 @@
       "CRASH",
       "CRASH",
       "CRASH",
-      "CRASH",
+      "EXPANSION",
       "EXPANSION",
       "EXPANSION"
     ],
@@ -139,8 +139,8 @@
     "last_reason": "HEALTHY"
   },
   "heartbeat": {
-    "audit": "2026-10-01T16:47:37",
-    "weekly": "2026-10-01T16:40:09",
+    "audit": "2026-10-01T16:54:34",
+    "weekly": "2026-10-01T16:54:34",
     "scan": "2026-10-01T16:46:19"
   },
   "last_scan": {
@@ -713,7 +713,7 @@
             "flow": 0.2044,
             "activity": 0.1738,
             "liquidity": 0.0847,
-            "resilience": 0.2574,
+            "resilience": 0.2573,
             "sector": 0.109
           },
           "signs": {
@@ -1144,7 +1144,7 @@
           "threshold_source": "GLOBAL"
         }
       },
-      "created_at": "2026-10-01T16:46:20",
+      "created_at": "2026-10-01T16:52:26",
       "decision": "Aday mutlak tabanı geçemedi (ort +0.05, PF 1.02)"
     },
     "promotion_count": 1,
@@ -1154,7 +1154,7 @@
       "promoted": false,
       "rollback": false,
       "note": "Aday mutlak tabanı geçemedi (ort +0.05, PF 1.02)",
-      "timestamp": "2026-10-01T16:46:20",
+      "timestamp": "2026-10-01T16:52:26",
       "train_mode": "Tam geçmiş"
     }
   },
@@ -1188,7 +1188,7 @@
       "days": 352
     },
     "model": null,
-    "updated": "2026-10-01T16:46:20"
+    "updated": "2026-10-01T16:52:26"
   },
   "retrain": {
     "pending": false,
@@ -1201,6 +1201,14 @@
           "SIFIRLAMA_V3"
         ],
         "promoted": true
+      },
+      {
+        "ts": "2026-10-01T16:52:26",
+        "done": "Tam geçmiş",
+        "reasons": [
+          "HAFTALIK"
+        ],
+        "promoted": false
       }
     ]
   },
@@ -1232,7 +1240,7 @@
     "return_col": "realized_5d",
     "outcome_col": null,
     "baseline_threshold": 75.0,
-    "last_run": "2026-10-01T13:47:36.784968Z",
+    "last_run": "2026-10-01T13:54:34.152493Z",
     "walk_forward_folds": [
       {
         "train_start": "2024-10-17",
@@ -1390,7 +1398,7 @@
       "days": 232
     },
     "kept_share": 0.7399150743099787,
-    "updated": "2026-10-01T16:46:20"
+    "updated": "2026-10-01T16:52:26"
   },
   "backtest_summary": {
     "n": 697,
