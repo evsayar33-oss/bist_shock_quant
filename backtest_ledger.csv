@@ -1,2 +1,2 @@
 date,ticker,label_version,signal_close,weight_pct,atr_pct,initial_score,effective_min_score,p_win,regime,macro_label,grp,grp_name,liq20,cost_rt,entry_date,entry_price,stop_price,tp1_price,tp2_price,status,exit_reason,exit_date,days,tp1_hit,tp1_date,tp2_hit,stop_hit,mtm_ret,net_ret,d1,d2,d3,d4,d5,d6,d7,d8,d9,d10,is_completed
-2026-10-01,TKFEN,3,252.0,3.2,0.08370181492396764,75.6,72.5,,EXPANSION,NEUTRAL,2.0,"AKBNK, THYAO, ISCTR",1550025062.0857773,0.2961994601647313,,,,,,PENDING,,,,,,,,,,,,,,,,,,,,0
+2026-10-01,TKFEN,3,252.0,3.2,0.0837018149239676,75.6,72.5,,EXPANSION,NEUTRAL,2.0,"AKBNK, THYAO, ISCTR",1550025062.0857773,0.2961994601647313,2026-10-02,256.0,213.1447,277.4277,,OPEN,,,1.0,0.0,,0.0,0.0,-3.382,,-3.09,,,,,,,,,,0
